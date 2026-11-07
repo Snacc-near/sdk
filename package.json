@@ -1,0 +1,18 @@
+{
+  "name": "snacc-lab-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SDK-107..108 — parser event NEP-297 kontrak snacc-v001.near untuk lab-sdk (M4)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test dist/test/"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "typescript": "^5.6.0"
+  }
+}
