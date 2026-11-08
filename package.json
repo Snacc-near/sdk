@@ -4,6 +4,14 @@
   "private": true,
   "description": "SDK-107..108 — parser event NEP-297 kontrak snacc-v001.near untuk lab-sdk (M4)",
   "type": "module",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "default": "./dist/src/index.js"
+    }
+  },
   "engines": {
     "node": ">=20"
   },
