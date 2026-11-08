@@ -79,12 +79,220 @@ export interface SubaccountMaterializedEvent {
   sub_account_id: string;
 }
 
+// ─── SDK-101..106 — sisa 19 kind kanonik (grep `lib.rs`, salin persis) ───
+
+export interface FedEvent {
+  kind: "fed";
+  strain_id: number;
+  base_fee: number;
+  effective_fee: number;
+  burst_bps: number;
+  rescue_bps: number;
+  dormant: boolean;
+  atp_minted: number;
+}
+
+export interface AtpSpentEvent {
+  kind: "atp_spent";
+  strain_id: number;
+  purpose: string;
+  cost: number;
+}
+
+export interface AtpAllocatedEvent {
+  kind: "atp_allocated";
+  strain_id: number;
+  mitokondria: number;
+  nukleus: number;
+  lisosom: number;
+  cost: number;
+  epoch: number;
+}
+
+export interface GenomeCommittedEvent {
+  kind: "genome_committed";
+  strain_id: number;
+  req_sha256_hex: string;
+}
+
+export interface GenomeMutatedEvent {
+  kind: "genome_mutated";
+  strain_id: number;
+  efficiency_shift_bps: number;
+  vitality_bonus: number;
+}
+
+export interface StrainsSplicedEvent {
+  kind: "strains_spliced";
+  dominant_id: number;
+  absorbed_id: number;
+  merger_tax: number;
+}
+
+export interface HostileTakeoverSplicedEvent {
+  kind: "hostile_takeover_spliced";
+  raider_id: number;
+  target_id: number;
+  book_value: number;
+  payment: number;
+  seller_payout: number;
+  treasury_cut: number;
+}
+
+export interface StrainLiquidatedEvent {
+  kind: "strain_liquidated";
+  target_id: number;
+  liquidator: string;
+  bounty: number;
+  treasury_recovery: number;
+}
+
+export interface StrainDividedEvent {
+  kind: "strain_divided";
+  parent_id: number;
+  child_id: number;
+  child_generation: number;
+  parent_balance: number;
+  child_balance: number;
+  child_vitality: number;
+  child_spores: number;
+}
+
+export interface StrainAdoptedEvent {
+  kind: "strain_adopted";
+  target_id: number;
+  adopter: string;
+  raider_strain_id: number;
+  book_value: number;
+}
+
+export interface TraitConjugatedEvent {
+  kind: "trait_conjugated";
+  from_strain_id: number;
+  to_strain_id: number;
+  phenotype_trait: string;
+}
+
+export interface FeastResultEvent {
+  kind: "feast_result";
+  epoch: number;
+  volume: number;
+  target: number;
+  verdict: string;
+}
+
+export interface ZoneChangedEvent {
+  kind: "zone_changed";
+  from_zone: string;
+  to_zone: string;
+  crucible_temp: number;
+}
+
+export interface NutrientBurstReleasedEvent {
+  kind: "nutrient_burst_released";
+  strain_id: number;
+  epoch: number;
+  released_vita: number;
+  burst_bps: number;
+  until_epoch: number;
+}
+
+export interface NpcSporesBoughtEvent {
+  kind: "npc_spores_bought";
+  strain_id: number;
+  npc_id: string;
+  amount: number;
+  unit_price: number;
+  total_cost: number;
+}
+
+export interface DividendInflowEvent {
+  kind: "dividend_inflow";
+  action: string;
+  fee: number;
+  burned: number;
+  inflow: number;
+  epoch: number;
+}
+
+export interface AetherBurnedForDividendEvent {
+  kind: "aether_burned_for_dividend";
+  strain_id: number;
+  amount: number;
+  epoch: number;
+  cumulative: number;
+}
+
+export interface EpochDividendClosedEvent {
+  kind: "epoch_dividend_closed";
+  epoch: number;
+  pool: number;
+  total_burned: number;
+  rate: number;
+}
+
+export interface DividendClaimedEvent {
+  kind: "dividend_claimed";
+  strain_id: number;
+  epoch: number;
+  contribution: number;
+  payout: number;
+  pool_after: number;
+}
+
+// ─── Event standar (nama langsung di envelope, tanpa `kind` di payload) ───
+
+export interface Nep141TransferEvent {
+  kind: "ft_transfer";
+  old_owner_id: string;
+  new_owner_id: string;
+  amount: number;
+  memo: string | null;
+}
+
+export interface Nep141BurnEvent {
+  kind: "ft_burn";
+  owner_id: string;
+  amount: number;
+}
+
+export interface Nep171TransferEvent {
+  kind: "nft_transfer";
+  old_owner_id: string;
+  new_owner_id: string;
+  token_ids: string[];
+  approved_account_ids: null;
+  memo: string | null;
+}
+
 export type SnaccEvent =
   | StrainCreatedEvent
   | ExtractedEvent
   | TransmutedEvent
   | SynthesizedEvent
-  | SubaccountMaterializedEvent;
+  | SubaccountMaterializedEvent
+  | FedEvent
+  | AtpSpentEvent
+  | AtpAllocatedEvent
+  | GenomeCommittedEvent
+  | GenomeMutatedEvent
+  | StrainsSplicedEvent
+  | HostileTakeoverSplicedEvent
+  | StrainLiquidatedEvent
+  | StrainDividedEvent
+  | StrainAdoptedEvent
+  | TraitConjugatedEvent
+  | FeastResultEvent
+  | ZoneChangedEvent
+  | NutrientBurstReleasedEvent
+  | NpcSporesBoughtEvent
+  | DividendInflowEvent
+  | AetherBurnedForDividendEvent
+  | EpochDividendClosedEvent
+  | DividendClaimedEvent
+  | Nep141TransferEvent
+  | Nep141BurnEvent
+  | Nep171TransferEvent;
 
 const KNOWN_KINDS = new Set([
   "strain_created",
@@ -92,6 +300,28 @@ const KNOWN_KINDS = new Set([
   "transmuted",
   "synthesized",
   "subaccount_materialized",
+  "fed",
+  "atp_spent",
+  "atp_allocated",
+  "genome_committed",
+  "genome_mutated",
+  "strains_spliced",
+  "hostile_takeover_spliced",
+  "strain_liquidated",
+  "strain_divided",
+  "strain_adopted",
+  "trait_conjugated",
+  "feast_result",
+  "zone_changed",
+  "nutrient_burst_released",
+  "npc_spores_bought",
+  "dividend_inflow",
+  "aether_burned_for_dividend",
+  "epoch_dividend_closed",
+  "dividend_claimed",
+  "ft_transfer",
+  "ft_burn",
+  "nft_transfer",
 ]);
 
 /** Field wajib per kind — salin persis dari format `lib.rs`. */
@@ -101,6 +331,28 @@ const REQUIRED_FIELDS: Record<string, string[]> = {
   transmuted: ["strain_id", "burned_spores", "token_out", "minted", "catalyst_fee"],
   synthesized: ["strain_id", "token_out", "minted", "enzymes_burned", "catalyst_fee"],
   subaccount_materialized: ["strain_id", "sub_account_id"],
+  fed: ["strain_id", "base_fee", "effective_fee", "burst_bps", "rescue_bps", "dormant", "atp_minted"],
+  atp_spent: ["strain_id", "purpose", "cost"],
+  atp_allocated: ["strain_id", "mitokondria", "nukleus", "lisosom", "cost", "epoch"],
+  genome_committed: ["strain_id", "req_sha256_hex"],
+  genome_mutated: ["strain_id", "efficiency_shift_bps", "vitality_bonus"],
+  strains_spliced: ["dominant_id", "absorbed_id", "merger_tax"],
+  hostile_takeover_spliced: ["raider_id", "target_id", "book_value", "payment", "seller_payout", "treasury_cut"],
+  strain_liquidated: ["target_id", "liquidator", "bounty", "treasury_recovery"],
+  strain_divided: ["parent_id", "child_id", "child_generation", "parent_balance", "child_balance", "child_vitality", "child_spores"],
+  strain_adopted: ["target_id", "adopter", "raider_strain_id", "book_value"],
+  trait_conjugated: ["from_strain_id", "to_strain_id", "phenotype_trait"],
+  feast_result: ["epoch", "volume", "target", "verdict"],
+  zone_changed: ["from_zone", "to_zone", "crucible_temp"],
+  nutrient_burst_released: ["strain_id", "epoch", "released_vita", "burst_bps", "until_epoch"],
+  npc_spores_bought: ["strain_id", "npc_id", "amount", "unit_price", "total_cost"],
+  dividend_inflow: ["action", "fee", "burned", "inflow", "epoch"],
+  aether_burned_for_dividend: ["strain_id", "amount", "epoch", "cumulative"],
+  epoch_dividend_closed: ["epoch", "pool", "total_burned", "rate"],
+  dividend_claimed: ["strain_id", "epoch", "contribution", "payout", "pool_after"],
+  ft_transfer: ["old_owner_id", "new_owner_id", "amount", "memo"],
+  ft_burn: ["owner_id", "amount"],
+  nft_transfer: ["old_owner_id", "new_owner_id", "token_ids", "approved_account_ids", "memo"],
 };
 
 /** Buka pembungkus NEP-297 baku (`EVENT_JSON:` + `data: [...]`) bila ada. */
