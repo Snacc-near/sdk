@@ -59,6 +59,14 @@ Event parser additions: NEP-297 `ft_mint` (`{owner_id, amount, memo?}`) alongsid
 `storage_unregister`, …) are in `DEPOSIT_METHODS` and never valid on the
 signless session-key path.
 
+**API change (N141-105):** NEP-141 amounts (`ft_mint` / `ft_transfer` / `ft_burn`)
+are now typed as decimal strings (`amount: string`) per the NEP-141 events
+standard — a u128 JSON number loses precision in JS above 2^53. The parser
+accepts both shapes (a number from the currently deployed contract, a string
+after redeploy) and normalizes to a string; a string input is never routed
+through `Number()`. `ft_burn` also exposes `memo: string | null` (older logs
+without it parse as `memo: null`).
+
 ```bash
 npm ci && npm test
 SNACC_TESTNET_IT=1 npm test   # + testnet integration tests (a fresh faucet account per run)

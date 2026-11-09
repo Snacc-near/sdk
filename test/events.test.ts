@@ -104,20 +104,75 @@ describe("SDK-107 — the standard NEP-297 wrapper (EVENT_JSON:, the VC-010 shap
     const ev = parseEventLine(
       'EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_mint","data":[{"owner_id":"a.testnet","amount":500,"memo":"bonus"}]}',
     );
-    assert.deepEqual(ev, { kind: "ft_mint", owner_id: "a.testnet", amount: 500, memo: "bonus" });
+    assert.deepEqual(ev, { kind: "ft_mint", owner_id: "a.testnet", amount: "500", memo: "bonus" });
   });
 
   test("NEP-141 ft_mint (memo absent)", () => {
     const ev = parseEventLine(
       'EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_mint","data":[{"owner_id":"a.testnet","amount":500}]}',
     );
-    assert.deepEqual(ev, { kind: "ft_mint", owner_id: "a.testnet", amount: 500 });
+    assert.deepEqual(ev, { kind: "ft_mint", owner_id: "a.testnet", amount: "500" });
   });
 
   test("NEP-141 ft_mint missing a required field → MISSING_FIELDS", () => {
     assert.throws(
       () => parseEventLine('EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_mint","data":[{"amount":500}]}'),
       (err: unknown) => err instanceof EventParseError && err.reason === "MISSING_FIELDS",
+    );
+  });
+
+  test("NEP-141 ft_transfer: the string amount is passed through verbatim (never Number()-ed)", () => {
+    const big = "9007199254740993"; // 2^53 + 1 — not representable as a JS number
+    const ev = parseEventLine(
+      `EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_transfer","data":[{"old_owner_id":"a.testnet","new_owner_id":"b.testnet","amount":"${big}","memo":"hi"}]}`,
+    );
+    assert.deepEqual(ev, {
+      kind: "ft_transfer",
+      old_owner_id: "a.testnet",
+      new_owner_id: "b.testnet",
+      amount: big,
+      memo: "hi",
+    });
+    assert.equal(typeof (ev as { amount: unknown }).amount, "string");
+    // If the string had gone through Number(), 2^53+1 would come back as ...92.
+    assert.equal((ev as { amount: string }).amount, big);
+  });
+
+  test("NEP-141 ft_burn: a string amount above 2^53 survives exactly", () => {
+    const big = "340282366920938463463374607431768211455"; // u128::MAX
+    const ev = parseEventLine(
+      `EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_burn","data":[{"owner_id":"a.testnet","amount":"${big}","memo":null}]}`,
+    );
+    assert.deepEqual(ev, { kind: "ft_burn", owner_id: "a.testnet", amount: big, memo: null });
+  });
+
+  test("NEP-141 ft_transfer: a legacy number amount is normalized to a string", () => {
+    const ev = parseEventLine(
+      'EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_transfer","data":[{"old_owner_id":"a.testnet","new_owner_id":"b.testnet","amount":100,"memo":null}]}',
+    );
+    assert.deepEqual(ev, {
+      kind: "ft_transfer",
+      old_owner_id: "a.testnet",
+      new_owner_id: "b.testnet",
+      amount: "100",
+      memo: null,
+    });
+  });
+
+  test("NEP-141 ft_burn: an old log without memo parses as memo: null", () => {
+    const ev = parseEventLine(
+      'EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_burn","data":[{"owner_id":"a.testnet","amount":42}]}',
+    );
+    assert.deepEqual(ev, { kind: "ft_burn", owner_id: "a.testnet", amount: "42", memo: null });
+  });
+
+  test("NEP-141: a non-decimal string amount → INVALID_JSON", () => {
+    assert.throws(
+      () =>
+        parseEventLine(
+          'EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_mint","data":[{"owner_id":"a.testnet","amount":"1e6","memo":null}]}',
+        ),
+      (err: unknown) => err instanceof EventParseError && err.reason === "INVALID_JSON",
     );
   });
 });
