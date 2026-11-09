@@ -1,26 +1,26 @@
-// SDK-101..106 — `SnaccClient`: pembungkus SEMUA method publik kontrak `snacc-v001`
-// (signature persis dari `contracts/snacc/src/lib.rs`) + view wrappers.
+// SDK-101..106 — `SnaccClient`: wrappers for ALL public methods of the `snacc-v001`
+// contract (exact signatures from `contracts/snacc/src/lib.rs`) + view wrappers.
 //
-// Desain:
-// - Transport disuntik (`Transport`) sehingga unit test memakai mock tanpa jaringan.
-// - Nilai u128 dikirim sebagai **string** (konvensi JSON NEAR; aman > 2^53).
-// - Deposit otomatis yang benar per method (dari lib.rs):
+// Design:
+// - The transport is injected (`Transport`) so unit tests use a mock with no network.
+// - u128 values are sent as **strings** (the NEAR JSON convention; safe above 2^53).
+// - The right automatic deposit per method (from lib.rs):
 //     · incubate_strain           → deposit = initial_snacc_stake (attached == stake)
 //     · materialize_subaccount    → deposit = 0.02 NEAR = 2×10^22 yocto (20 milliNEAR)
 //     · extract/synthesize        → deposit = snacc_catalyst_fee (attached == fee)
-//     · transmute                 → deposit = fee, opsional diskon diet EN-110 (×0,8)
-//     · nft_transfer/ft_transfer  → 1 yoctoNEAR (standar)
-//     · sisanya (feed, claim, M&A, NPC, dll) → 0 (feed/claim payable-refund di kontrak)
+//     · transmute                 → deposit = the fee, optionally with the EN-110 diet discount (×0.8)
+//     · nft_transfer/ft_transfer  → 1 yoctoNEAR (the standard)
+//     · the rest (feed, claim, M&A, NPC, etc.) → 0 (feed/claim payable-refund in the contract)
 import { parseEventLine, type SnaccEvent } from "./events.js";
 
 export const ONE_YOCTO = "1";
 export const MATERIALIZE_DEPOSIT_YOCTO = "20000000000000000000000"; // 20 milliNEAR
 
-/** Transport JSON-RPC minimal — implementasi nyata di wallet/backend; mock di test. */
+/** A minimal JSON-RPC transport — real implementations live in the wallet/backend; a mock in tests. */
 export interface Transport {
-  /** `query` → `call_function`: kembalikan hasil view yang sudah di-parse. */
+  /** `query` → `call_function`: return the already-parsed view result. */
   view<T>(method: string, args: Record<string, unknown>): Promise<T>;
-  /** Kirim transaksi (signer dipegang implementasi); kembalikan hasil tx. */
+  /** Send a transaction (the signer is held by the implementation); return the tx result. */
   call(
     method: string,
     args: Record<string, unknown>,
@@ -30,10 +30,10 @@ export interface Transport {
 
 export interface TxResult {
   txHash: string;
-  /** Event NEP-297 yang terpancar (sudah di-parse dari log receipt). */
+  /** The emitted NEP-297 events (already parsed from the receipt logs). */
   events: SnaccEvent[];
   success: boolean;
-  /** Log mentah receipt (opsional — dari transport). */
+  /** Raw receipt logs (optional — from the transport). */
   logs?: string[];
 }
 
@@ -46,7 +46,7 @@ type U128 = string | number | bigint;
 
 const u = (v: U128): string => v.toString();
 
-/** Kumpulkan event dari hasil tx; baris non-event diabaikan (pola `gladi-kpi`). */
+/** Collect the events from a tx result; non-event lines are ignored (the `gladi-kpi` pattern). */
 export function eventsFromTxResult(result: {
   logs?: string[];
 }): SnaccEvent[] {
@@ -73,12 +73,12 @@ export class SnaccClient {
     attachedDepositYocto: string = "0",
   ): Promise<TxResult> {
     const res = await this.transport.call(method, args, attachedDepositYocto);
-    // Transport yang menyertakan `events` dipakai; bila kosong, parse dari `logs`.
+    // The transport that supplies `events` is used; when absent, parse from `logs`.
     const events = res.events?.length ? res.events : eventsFromTxResult(res);
     return { ...res, events };
   }
 
-  // ─── View (J3.8/J3.9 + semuanya) ───
+  // ─── Views (J3.8/J3.9 + everything else) ───
 
   getStrain(strain_id: U128) {
     return this.transport.view<Record<string, unknown>>("get_strain", { strain_id: u(strain_id) });
@@ -231,7 +231,7 @@ export class SnaccClient {
     return this.call("feed_strain", { strain_id: u(strain_id), amount: u(amount) });
   }
 
-  // ─── M&A, reproduksi, koloni ───
+  // ─── M&A, reproduction, colony ───
 
   spliceStrains(dominant_id: U128, absorbed_id: U128) {
     return this.call("splice_strains", {

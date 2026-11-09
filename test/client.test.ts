@@ -1,4 +1,4 @@
-// SDK-101..106 — unit test `SnaccClient` + parser 23 kind (node:test, mock transport).
+// SDK-101..106 — `SnaccClient` unit tests + a parser for 23 kinds (node:test, mock transport).
 
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
@@ -13,7 +13,7 @@ import {
 } from "../src/client.js";
 import { parseEventLine } from "../src/events.js";
 
-/** Transport mock: rekam semua panggilan; balas view dengan fixture. */
+/** A mock transport: records every call; replies to views with fixtures. */
 function mockTransport(views: Record<string, unknown> = {}) {
   const calls: { kind: "view" | "call"; method: string; args: Record<string, unknown>; deposit: string }[] = [];
   const txResults: TxResult[] = [];
@@ -21,7 +21,7 @@ function mockTransport(views: Record<string, unknown> = {}) {
     async view(method, args) {
       calls.push({ kind: "view", method, args, deposit: "0" });
       const v = views[method];
-      if (v === undefined) throw new Error(`view tidak tersedia di mock: ${method}`);
+      if (v === undefined) throw new Error(`view not available in the mock: ${method}`);
       return v as never;
     },
     async call(method, args, deposit) {
@@ -33,8 +33,8 @@ function mockTransport(views: Record<string, unknown> = {}) {
   return { transport, calls, txResults };
 }
 
-describe("SDK-101 — parser: sisa 19 kind kanonik + event standar", () => {
-  const kasus: [string, string, string][] = [
+describe("SDK-101 — parser: the remaining 19 canonical kinds + standard events", () => {
+  const cases: [string, string, string][] = [
     ["fed", '{"kind":"fed","strain_id":1,"base_fee":1000,"effective_fee":828,"burst_bps":2000,"rescue_bps":9200,"dormant":false,"atp_minted":5}', "atp_minted"],
     ["atp_spent", '{"kind":"atp_spent","strain_id":1,"purpose":"splice","cost":5}', "cost"],
     ["atp_allocated", '{"kind":"atp_allocated","strain_id":1,"mitokondria":2,"nukleus":1,"lisosom":0,"cost":3,"epoch":0}', "epoch"],
@@ -55,16 +55,16 @@ describe("SDK-101 — parser: sisa 19 kind kanonik + event standar", () => {
     ["epoch_dividend_closed", '{"kind":"epoch_dividend_closed","epoch":0,"pool":50,"total_burned":1,"rate":50000000000000000000}', "rate"],
     ["dividend_claimed", '{"kind":"dividend_claimed","strain_id":5,"epoch":0,"contribution":1,"payout":50,"pool_after":0}', "pool_after"],
   ];
-  for (const [kind, line, field] of kasus) {
-    test(`kind ${kind} ter-parse (field ${field} ada)`, () => {
+  for (const [kind, line, field] of cases) {
+    test(`kind ${kind} parses (the ${field} field exists)`, () => {
       const ev = parseEventLine(line);
-      assert.ok(ev, `${kind} harus ter-parse`);
+      assert.ok(ev, `${kind} must parse`);
       assert.equal(ev.kind, kind);
       assert.ok((ev as unknown as Record<string, unknown>)[field] !== undefined);
     });
   }
 
-  test("event standar NEP-297: nep141 ft_transfer & nep171 nft_transfer", () => {
+  test("NEP-297 standard events: nep141 ft_transfer & nep171 nft_transfer", () => {
     const ft = parseEventLine(
       'EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_transfer","data":[{"old_owner_id":"a.testnet","new_owner_id":"b.testnet","amount":500,"memo":null}]}',
     );
@@ -77,13 +77,13 @@ describe("SDK-101 — parser: sisa 19 kind kanonik + event standar", () => {
     assert.equal(nft.kind, "nft_transfer");
   });
 
-  test("kind tak dikenal tetap ditolak (UNKNOWN_KIND)", () => {
-    assert.throws(() => parseEventLine('{"kind":"halo"}'), /kind tidak dikenal/);
+  test("an unknown kind is still rejected (UNKNOWN_KIND)", () => {
+    assert.throws(() => parseEventLine('{"kind":"halo"}'), /unknown kind/);
   });
 });
 
 describe("SDK-102..103 — SnaccClient: view wrappers", () => {
-  test("get_strain/get_inventory/get_colony/get_colony_atp meneruskan argumen benar", async () => {
+  test("get_strain/get_inventory/get_colony/get_colony_atp forward the right arguments", async () => {
     const { transport, calls } = mockTransport({
       get_strain: { strain_id: 1 },
       get_inventory: "3",
@@ -106,7 +106,7 @@ describe("SDK-102..103 — SnaccClient: view wrappers", () => {
     assert.deepEqual(calls[2]?.args, { owner_id: "alkemis.testnet" });
   });
 
-  test("view makro/dividen/NPC/FT/NFT tersedia dan mengembalikan fixture", async () => {
+  test("macro/dividend/NPC/FT/NFT views exist and return the fixtures", async () => {
     const fixture = { crucible_temp: 610, macro: { current_epoch: 1 }, solvency: { solvent: true } };
     const { transport, calls } = mockTransport({
       get_crucible_temp: fixture.crucible_temp,
@@ -137,11 +137,11 @@ describe("SDK-102..103 — SnaccClient: view wrappers", () => {
     assert.equal((await client.ftMetadata()).symbol, "$SNACC");
     assert.equal((await client.nftToken("1")).token_id, "1");
     assert.equal(await client.getTotalWealth("a.testnet"), "800");
-    assert.equal(calls.length, 12, "12 view tercatat");
+    assert.equal(calls.length, 12, "12 views recorded");
   });
 });
 
-describe("SDK-104 — deposit otomatis yang benar", () => {
+describe("SDK-104 — the right automatic deposit", () => {
   test("incubate_strain: deposit == initial_snacc_stake", async () => {
     const { transport, calls } = mockTransport();
     const client = new SnaccClient({ contractId: "c.testnet", transport });
@@ -163,7 +163,7 @@ describe("SDK-104 — deposit otomatis yang benar", () => {
     assert.equal(BigInt(MATERIALIZE_DEPOSIT_YOCTO), 20n * 10n ** 21n, "20 milliNEAR");
   });
 
-  test("extract/synthesize: deposit == fee; transmute tanpa diet == fee", async () => {
+  test("extract/synthesize: deposit == fee; transmute without a diet == fee", async () => {
     const { transport, calls } = mockTransport();
     const client = new SnaccClient({ contractId: "c.testnet", transport });
     await client.extractSpores(1, "mt:spore-ignis", 1000);
@@ -174,12 +174,12 @@ describe("SDK-104 — deposit otomatis yang benar", () => {
     assert.equal(calls[2]?.deposit, "1000");
   });
 
-  test("transmute dengan diet EN-110: deposit == fee × 0,8", async () => {
+  test("transmute with the EN-110 diet: deposit == fee × 0.8", async () => {
     const { transport, calls } = mockTransport();
     const client = new SnaccClient({ contractId: "c.testnet", transport });
     await client.transmuteSporesToEnzyme(1, 2, 1000, { diet: true });
     assert.equal(calls[0]?.deposit, "800");
-    // Nominal tetap utuh di args (kontrak yang menghitung ulang).
+    // The nominal amount stays intact in the args (the contract recomputes it).
     assert.deepEqual(calls[0]?.args, {
       strain_id: "1",
       spores_to_burn: 2,
@@ -187,7 +187,7 @@ describe("SDK-104 — deposit otomatis yang benar", () => {
     });
   });
 
-  test("transfer standar: deposit == 1 yoctoNEAR", async () => {
+  test("standard transfers: deposit == 1 yoctoNEAR", async () => {
     const { transport, calls } = mockTransport();
     const client = new SnaccClient({ contractId: "c.testnet", transport });
     await client.ftTransfer("b.testnet", 500, "memo");
@@ -195,12 +195,12 @@ describe("SDK-104 — deposit otomatis yang benar", () => {
     await client.nftTransfer("b.testnet", "1", null, null);
     await client.nftTransferCall("b.testnet", "1", "msg");
     for (const c of calls) {
-      assert.equal(c.deposit, ONE_YOCTO, `${c.method} wajib 1 yocto`);
+      assert.equal(c.deposit, ONE_YOCTO, `${c.method} requires 1 yocto`);
     }
     assert.deepEqual(calls[0]?.args, { receiver_id: "b.testnet", amount: "500", memo: "memo" });
   });
 
-  test("method biaya-nol: feed/claim/M&A/NPC/advance/TEE/burn/register = deposit 0", async () => {
+  test("zero-cost methods: feed/claim/M&A/NPC/advance/TEE/burn/register = deposit 0", async () => {
     const { transport, calls } = mockTransport();
     const client = new SnaccClient({ contractId: "c.testnet", transport });
     await client.feedStrain(1, 500);
@@ -223,7 +223,7 @@ describe("SDK-104 — deposit otomatis yang benar", () => {
       assert.equal(c.deposit, "0", `${c.method} deposit 0`);
     }
     assert.equal(calls.length, 16);
-    // Signature hostil/adopt/TEE persis lib.rs.
+    // The hostile/adopt/TEE signatures match lib.rs exactly.
     assert.deepEqual(calls[3]?.args, {
       raider_strain_id: "2",
       distressed_target_id: "1",
@@ -237,12 +237,12 @@ describe("SDK-104 — deposit otomatis yang benar", () => {
   });
 });
 
-describe("SDK-105 — event dari hasil tx", () => {
-  test("eventsFromTxResult mem-parse log NEP-297 dan mengabaikan log lain", () => {
+describe("SDK-105 — events from the tx result", () => {
+  test("eventsFromTxResult parses the NEP-297 logs and ignores other logs", () => {
     const res = {
       logs: [
         'EVENT_JSON:{"standard":"snacc","version":"1.0.0","event":"fed","data":[{"kind":"fed","strain_id":1,"base_fee":1000,"effective_fee":900,"burst_bps":0,"rescue_bps":10000,"dormant":false,"atp_minted":2}]}',
-        "log biasa bukan event",
+        "an ordinary log, not an event",
         'EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_burn","data":[{"owner_id":"a.testnet","amount":100}]}',
       ],
     };
@@ -252,7 +252,7 @@ describe("SDK-105 — event dari hasil tx", () => {
     assert.equal(evs[1]?.kind, "ft_burn");
   });
 
-  test("client.call melampirkan events dari TxResult transport", async () => {
+  test("client.call attaches the events from the transport's TxResult", async () => {
     const { transport, txResults } = mockTransport();
     txResults.push({
       txHash: "H",
@@ -269,19 +269,19 @@ describe("SDK-105 — event dari hasil tx", () => {
   });
 });
 
-describe("SDK-106 — kontrak ID & u128-as-string", () => {
-  test("u128 besar dikirim sebagai string (aman > 2^53)", async () => {
+describe("SDK-106 — the contract ID & u128-as-string", () => {
+  test("large u128 values are sent as strings (safe above 2^53)", async () => {
     const { transport, calls } = mockTransport();
     const client = new SnaccClient({ contractId: "c.testnet", transport });
-    const besar = "340282366920938463463374607431768211455"; // u128::MAX
-    await client.ftTransfer("b.testnet", besar);
-    await client.feedStrain(1, besar);
-    assert.equal(calls[0]?.args.amount, besar);
-    assert.equal(calls[1]?.args.amount, besar);
+    const big = "340282366920938463463374607431768211455"; // u128::MAX
+    await client.ftTransfer("b.testnet", big);
+    await client.feedStrain(1, big);
+    assert.equal(calls[0]?.args.amount, big);
+    assert.equal(calls[1]?.args.amount, big);
     assert.equal(typeof calls[0]?.args.amount, "string");
   });
 
-  test("contractId tersimpan dan dipakai oleh konsumen (dokumentasi perilaku)", () => {
+  test("the contractId is stored and used by consumers (documented behavior)", () => {
     const { transport } = mockTransport();
     const client = new SnaccClient({ contractId: "snacc-v001.testnet", transport });
     assert.equal(client.contractId, "snacc-v001.testnet");

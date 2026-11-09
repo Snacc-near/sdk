@@ -1,38 +1,38 @@
 # sdk — `M4 lab-sdk`
 
-SDK TypeScript proyek **Snacc** untuk berinteraksi dengan kontrak `snacc-v001.near`.
+The **Snacc** TypeScript SDK for interacting with the `snacc-v001.near` contract.
 
-Saat ini berisi parser event (`SDK-107..108`):
+Currently contains the event parser (`SDK-107..108`):
 
-- `parseEventLine(line)` / `parseEventLines(lines)` — parse event kontrak `snacc-v001.near`:
-  `strain_created`, `extracted`, `transmuted`, `synthesized` (JSON `{"kind":...}`) dan
-  `subaccount_materialized` (log key=value).
-- Mendukung bentuk polos kontrak saat ini **dan** pembungkus NEP-297 baku `EVENT_JSON:{...}`
-  dengan `data: [payload]` (yang akan dipakai `VC-010`).
-- JSON rusak / kind tak dikenal / field kurang → `EventParseError` dengan `reason` terkontrol.
+- `parseEventLine(line)` / `parseEventLines(lines)` — parses `snacc-v001.near` contract events:
+  `strain_created`, `extracted`, `transmuted`, `synthesized` (JSON `{"kind":...}`) and
+  `subaccount_materialized` (a key=value log).
+- Supports both the plain shape of the current contract **and** the standard NEP-297 wrapper
+  `EVENT_JSON:{...}` with `data: [payload]` (to be used by `VC-010`).
+- Broken JSON / an unknown kind / a missing field → an `EventParseError` with a controlled `reason`.
 
 ## Function Call Access Key (`VC-016`, `src/session-key.ts`)
 
-Sesi laboratorium *signless* (ADR-08): kunci function-call yang dibatasi ke `snacc-v001.testnet`
-+ daftar method + allowance (default 0,25 NEAR), disimpan lokal, dipakai menandatangani
-panggilan game tanpa popup dompet. Tanpa dependensi (WebCrypto ed25519 + borsh).
+A *signless* lab session (ADR-08): a function-call key restricted to `snacc-v001.testnet`
++ a method allowlist + an allowance (default 0.25 NEAR), stored locally, used to sign
+game calls without wallet popups. Dependency-free (WebCrypto ed25519 + borsh).
 
 - `SessionKeyManager({ rpc, store?, contractId? })` — `createSession`, `call`, `status`
   (`active` / `allowance_low` / `exhausted` / `revoked` / `missing`), `revoke`, `forget`, `asTransport` (→ `SnaccClient`).
-- `fullAccessRegistrar(rpc, secretKey)` — pendaftar `add_key`/`delete_key` dengan kunci full-access
-  (tes/onboarding relayer); di browser, sediakan `KeyRegistrar` berbasis dompet.
-- `MemorySessionKeyStore`, `WebStorageSessionKeyStore` (localStorage), `JsonRpcProvider` (default FastNEAR testnet).
-- Error terkontrol `SessionKeyError.code`: `ALLOWANCE_EXHAUSTED`, `KEY_REVOKED`, `METHOD_NOT_ALLOWED`, `DEPOSIT_NOT_ALLOWED`, dst.
+- `fullAccessRegistrar(rpc, secretKey)` — an `add_key`/`delete_key` registrar using a full-access key
+  (tests/relayer onboarding); in a browser, provide a wallet-based `KeyRegistrar`.
+- `MemorySessionKeyStore`, `WebStorageSessionKeyStore` (localStorage), `JsonRpcProvider` (FastNEAR testnet by default).
+- Controlled errors via `SessionKeyError.code`: `ALLOWANCE_EXHAUSTED`, `KEY_REVOKED`, `METHOD_NOT_ALLOWED`, `DEPOSIT_NOT_ALLOWED`, etc.
 
-**Batas protokol NEAR:** function-call key tidak boleh membawa deposit. Method yang menuntut deposit
+**NEAR protocol constraint:** a function-call key cannot carry a deposit. Methods that require a deposit
 (`incubate_strain`, `materialize_subaccount`, `extract_spores`, `transmute_spores_to_enzyme`,
-`synthesize_elixir`, `ft/nft_transfer*`, `storage_deposit`) **tetap lewat dompet**; hanya method deposit-0
-(`SIGNLESS_METHODS`, mis. `feed_strain`, `allocate_atp`, `splice_strains`) yang signless.
+`synthesize_elixir`, `ft/nft_transfer*`, `storage_deposit`) **still go through the wallet**; only the deposit-0
+methods (`SIGNLESS_METHODS`, e.g. `feed_strain`, `allocate_atp`, `splice_strains`) are signless.
 
 ```bash
 npm ci && npm test
-SNACC_TESTNET_IT=1 npm test   # + uji integrasi testnet (akun faucet baru per run)
+SNACC_TESTNET_IT=1 npm test   # + testnet integration tests (a fresh faucet account per run)
 ```
 
-Format rujukan persis: `repos/Snacc/contracts/snacc/src/lib.rs` (`events::emit_event_json`).
-`SnaccClient` + Function Call Keys menyusul di `VC-016..019` / `SDK-101..106`.
+The exact reference format: `repos/Snacc/contracts/snacc/src/lib.rs` (`events::emit_event_json`).
+`SnaccClient` + Function Call Keys follow in `VC-016..019` / `SDK-101..106`.

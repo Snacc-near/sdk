@@ -1,8 +1,8 @@
-// SDK-107..108 — parser event kontrak `snacc-v001.near` untuk `lab-sdk` (M4).
+// SDK-107..108 — the `snacc-v001.near` contract event parser for `lab-sdk` (M4).
 //
-// Format rujukan PERSIS dari `repos/Snacc/contracts/snacc/src/lib.rs` (pemanggilan
-// `events::emit_event_json`) dan `lib.rs:239` (log sub-account). Empat event JSON yang
-// SUDAH dipancarkan kontrak (bentuk saat ini: satu baris JSON dengan field `kind`):
+// The EXACT reference format comes from `repos/Snacc/contracts/snacc/src/lib.rs` (the
+// `events::emit_event_json` call) and `lib.rs:239` (the sub-account log). The four JSON events
+// ALREADY emitted by the contract (the current shape: one JSON line with a `kind` field):
 //
 //   {"kind":"strain_created","strain_id":N,"owner_id":"...","role_mask":N,"initial_snacc_stake":N,"spores_minted":N}
 //   {"kind":"extracted","strain_id":N,"token":"...","amount":1,"catalyst_fee":N}
@@ -12,18 +12,18 @@
 // Ditambah log non-JSON (lib.rs:239):
 //   subaccount_materialized strain_id=N sub_account_id=s-<id>.snacc-v001.near
 //
-// Parser juga menerima pembungkus NEP-297 baku `EVENT_JSON:{...}` (VC-010 akan memakai
-// bentuk ini): objek dengan `data: [payload]` dan `event` (atau `kind`) di level atas.
+// The parser also accepts the standard NEP-297 wrapper `EVENT_JSON:{...}` (VC-010 will use
+// this shape): an object with `data: [payload]` and `event` (or `kind`) at the top level.
 //
-// AMBIGUITAS (dicatat, tidak diarang):
-// A1. `emit_event_json` di kontrak masih stub `TODO(VC-010)` — prefix `EVENT_JSON:` belum
-//     benar-benar terpasang; parser mendukung kedua bentuk (polos & berprefix) agar tidak
-//     perlu diubah saat VC-010 merge.
-// A2. Nilai u128 (`initial_snacc_stake`, `catalyst_fee`) diparse sebagai `number` JSON;
-//     nilai di atas 2^53 kehilangan presisi — perlakuan BigInt diseragamkan belakangan
-//     bersama `SnaccClient` (VC-016..019).
+// AMBIGUITY (recorded, not resolved):
+// A1. `emit_event_json` in the contract is still a `TODO(VC-010)` stub — the `EVENT_JSON:` prefix is not
+//     actually installed yet; the parser supports both shapes (plain & prefixed) so it does not
+//     need to change when VC-010 merges.
+// A2. u128 values (`initial_snacc_stake`, `catalyst_fee`) are parsed as JSON `number`s;
+//     values above 2^53 lose precision — BigInt handling will be standardized later
+//     together with `SnaccClient` (VC-016..019).
 
-/** Error terkontrol untuk log yang terindikasi event tetapi tidak bisa diparse. */
+/** A controlled error for logs that look like events but cannot be parsed. */
 export class EventParseError extends Error {
   constructor(
     public readonly reason:
@@ -79,7 +79,7 @@ export interface SubaccountMaterializedEvent {
   sub_account_id: string;
 }
 
-// ─── SDK-101..106 — sisa 19 kind kanonik (grep `lib.rs`, salin persis) ───
+// ─── SDK-101..106 — the remaining 19 canonical kinds (grep `lib.rs`, copy verbatim) ───
 
 export interface FedEvent {
   kind: "fed";
@@ -240,7 +240,7 @@ export interface DividendClaimedEvent {
   pool_after: number;
 }
 
-// ─── Event standar (nama langsung di envelope, tanpa `kind` di payload) ───
+// ─── Standard events (the name sits directly in the envelope, without a `kind` in the payload) ───
 
 export interface Nep141TransferEvent {
   kind: "ft_transfer";
@@ -324,7 +324,7 @@ const KNOWN_KINDS = new Set([
   "nft_transfer",
 ]);
 
-/** Field wajib per kind — salin persis dari format `lib.rs`. */
+/** Required fields per kind — copied verbatim from the `lib.rs` formats. */
 const REQUIRED_FIELDS: Record<string, string[]> = {
   strain_created: ["strain_id", "owner_id", "role_mask", "initial_snacc_stake", "spores_minted"],
   extracted: ["strain_id", "token", "amount", "catalyst_fee"],
@@ -355,7 +355,7 @@ const REQUIRED_FIELDS: Record<string, string[]> = {
   nft_transfer: ["old_owner_id", "new_owner_id", "token_ids", "approved_account_ids", "memo"],
 };
 
-/** Buka pembungkus NEP-297 baku (`EVENT_JSON:` + `data: [...]`) bila ada. */
+/** Unwrap the standard NEP-297 wrapper (`EVENT_JSON:` + `data: [...]`) when present. */
 function unwrap(raw: string): Record<string, unknown> {
   const trimmed = raw.trim();
   const jsonText = trimmed.startsWith("EVENT_JSON:")
@@ -368,11 +368,11 @@ function unwrap(raw: string): Record<string, unknown> {
   } catch (err) {
     throw new EventParseError(
       "INVALID_JSON",
-      `bukan JSON valid: ${err instanceof Error ? err.message : String(err)}`,
+      `not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
   if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
-    throw new EventParseError("NOT_AN_EVENT_OBJECT", "event harus objek JSON");
+    throw new EventParseError("NOT_AN_EVENT_OBJECT", "the event must be a JSON object");
   }
 
   const record = obj as Record<string, unknown>;
@@ -380,7 +380,7 @@ function unwrap(raw: string): Record<string, unknown> {
   if (Array.isArray(record.data)) {
     const payload = record.data[0];
     if (typeof payload !== "object" || payload === null) {
-      throw new EventParseError("NOT_AN_EVENT_OBJECT", "data[0] harus objek");
+      throw new EventParseError("NOT_AN_EVENT_OBJECT", "data[0] must be an object");
     }
     const inner = payload as Record<string, unknown>;
     if (typeof record.event === "string" && inner.kind === undefined) {
@@ -391,27 +391,27 @@ function unwrap(raw: string): Record<string, unknown> {
   return record;
 }
 
-/** Validasi field wajib per kind, lalu kembalikan event bertipe. */
+/** Validate the required fields per kind, then return the typed event. */
 function buildEvent(kind: string, fields: Record<string, unknown>): SnaccEvent {
   const required = REQUIRED_FIELDS[kind];
   if (required === undefined) {
-    throw new EventParseError("UNKNOWN_KIND", `kind tidak dikenal: ${kind}`);
+    throw new EventParseError("UNKNOWN_KIND", `unknown kind: ${kind}`);
   }
   const missing = required.filter((f) => fields[f] === undefined);
   if (missing.length > 0) {
     throw new EventParseError(
       "MISSING_FIELDS",
-      `event ${kind} kurang field: ${missing.join(", ")}`,
+      `the event ${kind} is missing fields: ${missing.join(", ")}`,
     );
   }
   return { kind, ...fields } as unknown as SnaccEvent;
 }
 
 /**
- * Parse satu baris log menjadi `SnaccEvent`.
- * - Baris yang bukan event (tidak berawalan `EVENT_JSON:`/`{` dan bukan
+ * Parse one log line into a `SnaccEvent`.
+ * - Lines that are not events (neither prefixed with `EVENT_JSON:`/`{` nor a
  *   `subaccount_materialized ...`) → `null`.
- * - Baris terindikasi event tetapi rusak → `EventParseError` (error terkontrol).
+ * - A line that looks like an event but is broken → `EventParseError` (a controlled error).
  */
 export function parseEventLine(line: string): SnaccEvent | null {
   const trimmed = line.trim();
@@ -423,7 +423,7 @@ export function parseEventLine(line: string): SnaccEvent | null {
     if (typeof kind !== "string" || !KNOWN_KINDS.has(kind)) {
       throw new EventParseError(
         "UNKNOWN_KIND",
-        `kind tidak dikenal: ${String(kind)}`,
+        `unknown kind: ${String(kind)}`,
       );
     }
     return buildEvent(kind, fields);
@@ -440,7 +440,7 @@ export function parseEventLine(line: string): SnaccEvent | null {
       if (key === "strain_id") {
         const n = Number(value);
         if (!Number.isFinite(n)) {
-          throw new EventParseError("INVALID_JSON", `strain_id bukan angka: ${value}`);
+          throw new EventParseError("INVALID_JSON", `strain_id is not a number: ${value}`);
         }
         fields.strain_id = n;
       } else if (key !== "kind") {
@@ -450,10 +450,10 @@ export function parseEventLine(line: string): SnaccEvent | null {
     return buildEvent("subaccount_materialized", fields);
   }
 
-  return null; // bukan event (log biasa kontrak)
+  return null; // not an event (an ordinary contract log)
 }
 
-/** Parse banyak baris sekaligus; baris non-event dilewati. */
+/** Parse many lines at once; non-event lines are skipped. */
 export function parseEventLines(lines: string[]): SnaccEvent[] {
   const out: SnaccEvent[] = [];
   for (const line of lines) {
