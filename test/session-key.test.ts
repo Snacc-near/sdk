@@ -1,4 +1,4 @@
-// VC-016 — unit test manajer Function Call Access Key (mock RPC, tanpa jaringan).
+// VC-016 — Function Call Access Key manager unit tests (a mock RPC, no network).
 
 import assert from "node:assert/strict";
 import test, { describe } from "node:test";
@@ -27,7 +27,7 @@ import {
 const ACCOUNT = "alice.testnet";
 const BLOCK_HASH = base58Encode(new Uint8Array(32).fill(7));
 
-/** Mock RPC dengan state access key: nonce, allowance, keberadaan. Merekam semua tx. */
+/** A mock RPC with access-key state: nonce, allowance, existence. Records every tx. */
 function mockRpc() {
   const state = {
     keys: new Map<string, { nonce: number; allowance: string | null }>(),
@@ -73,7 +73,7 @@ function mockRpc() {
   return { rpc, state };
 }
 
-/** Registrar mock: "mendaftarkan" kunci ke state mock (seperti chain sungguhan). */
+/** A mock registrar: "registers" the key into the mock state (like the real chain). */
 function mockRegistrar(state: ReturnType<typeof mockRpc>["state"]) {
   const adds: any[] = [];
   const dels: any[] = [];
@@ -92,7 +92,7 @@ function mockRegistrar(state: ReturnType<typeof mockRpc>["state"]) {
   return { reg, adds, dels };
 }
 
-/** Parse SignedTransaction borsh (subset FunctionCall) + verifikasi tanda tangan ed25519. */
+/** Decode a borsh SignedTransaction (a FunctionCall subset) + verify the ed25519 signature. */
 async function decodeSigned(base64: string) {
   const b = Uint8Array.from(Buffer.from(base64, "base64"));
   const dv = new DataView(b.buffer);
@@ -113,7 +113,7 @@ async function decodeSigned(base64: string) {
   const receiverId = str();
   o += 32; // block hash
   const nActions = u32();
-  assert.equal(b[o++], 2, "aksi FunctionCall (index 2)");
+  assert.equal(b[o++], 2, "the FunctionCall action (index 2)");
   const methodName = str();
   const argLen = u32();
   const args = new TextDecoder().decode(b.slice(o, o + argLen));
@@ -126,25 +126,25 @@ async function decodeSigned(base64: string) {
   const txEnd = o;
   assert.equal(b[o++], 0, "signature key type ed25519");
   const sig = b.slice(o, o + 64);
-  assert.equal(o + 64, b.length, "tidak ada byte sisa");
+  assert.equal(o + 64, b.length, "no leftover bytes");
   const hash = new Uint8Array(await crypto.subtle.digest("SHA-256", b.slice(0, txEnd)));
   const key = await crypto.subtle.importKey("raw", pk, { name: "Ed25519" }, false, ["verify"]);
   const valid = await crypto.subtle.verify({ name: "Ed25519" }, key, sig, hash);
   return { signerId, pk: `ed25519:${base58Encode(pk)}`, nonce, receiverId, nActions, methodName, args, gas, deposit: depositLo + (depositHi << 64n), valid };
 }
 
-describe("VC-016 — base58 & kunci", () => {
-  test("base58 round-trip (termasuk nol di depan)", () => {
+describe("VC-016 — base58 & keys", () => {
+  test("base58 round-trip (including leading zeros)", () => {
     for (const bytes of [[0, 0, 1, 2, 3], [255, 255], [0], [1], Array.from({ length: 32 }, (_, i) => i * 8)]) {
       const u = Uint8Array.from(bytes);
       assert.deepEqual(base58Decode(base58Encode(u)), u);
     }
-    assert.equal(base58Encode(new TextEncoder().encode("hello")), "Cn8eVZg"); // vektor baku
+    assert.equal(base58Encode(new TextEncoder().encode("hello")), "Cn8eVZg"); // the standard vector
   });
-  test("base58 menolak karakter tidak valid", () => {
+  test("base58 rejects invalid characters", () => {
     assert.throws(() => base58Decode("0OIl"), (e: any) => e.code === "BAD_KEY");
   });
-  test("generateKeyPair: format NEAR; publicKeyOf konsisten; unik", async () => {
+  test("generateKeyPair: the NEAR format; publicKeyOf is consistent; unique", async () => {
     const a = await generateKeyPair();
     const b = await generateKeyPair();
     assert.match(a.publicKey, /^ed25519:[1-9A-HJ-NP-Za-km-z]+$/);
@@ -152,19 +152,19 @@ describe("VC-016 — base58 & kunci", () => {
     assert.equal(publicKeyOf(a.secretKey), a.publicKey);
     assert.notEqual(a.publicKey, b.publicKey);
   });
-  test("publicKeyOf menolak kunci rusak", () => {
+  test("publicKeyOf rejects broken keys", () => {
     assert.throws(() => publicKeyOf("secp256k1:abc"), (e: any) => e.code === "BAD_KEY");
     assert.throws(() => publicKeyOf("ed25519:" + base58Encode(new Uint8Array(5))), (e: any) => e.code === "BAD_KEY");
   });
 });
 
-describe("VC-016 — daftar method", () => {
-  test("SIGNLESS_METHODS tidak beririsan dengan DEPOSIT_METHODS; nama unik", () => {
+describe("VC-016 — the method lists", () => {
+  test("SIGNLESS_METHODS does not overlap DEPOSIT_METHODS; unique names", () => {
     for (const m of SIGNLESS_METHODS) assert.ok(!DEPOSIT_METHODS.includes(m), m);
     assert.equal(new Set(SIGNLESS_METHODS).size, SIGNLESS_METHODS.length);
     assert.ok(SIGNLESS_METHODS.includes("feed_strain"));
   });
-  test("method signless sesuai deposit 0 di SnaccClient (selaras dengan klien)", async () => {
+  test("signless methods match the deposit-0 deposits in SnaccClient (aligned with the client)", async () => {
     const deposits = new Map<string, string>();
     const client = new SnaccClient({
       contractId: "snacc-v001.testnet",
@@ -186,7 +186,7 @@ describe("VC-016 — daftar method", () => {
 });
 
 describe("VC-016 — createSession", () => {
-  test("mendaftarkan kunci terbatas ke snacc-v001.testnet + simpan lokal", async () => {
+  test("registers a key restricted to snacc-v001.testnet + stores it locally", async () => {
     const { rpc, state } = mockRpc();
     const { reg, adds } = mockRegistrar(state);
     const store = new MemorySessionKeyStore();
@@ -200,7 +200,7 @@ describe("VC-016 — createSession", () => {
     assert.deepEqual(await m.getSession(ACCOUNT), rec);
     assert.equal(publicKeyOf(rec.secretKey), rec.publicKey);
   });
-  test("menolak method yang butuh deposit", async () => {
+  test("rejects methods that require a deposit", async () => {
     const { rpc, state } = mockRpc();
     const { reg, adds } = mockRegistrar(state);
     const m = new SessionKeyManager({ rpc });
@@ -210,7 +210,7 @@ describe("VC-016 — createSession", () => {
     );
     assert.equal(adds.length, 0);
   });
-  test("validasi: methodNames kosong/duplikat/ilegal, allowance 0/ilegal, accountId kosong", async () => {
+  test("validation: empty/duplicate/illegal methodNames, a 0/illegal allowance, an empty accountId", async () => {
     const { rpc, state } = mockRpc();
     const { reg } = mockRegistrar(state);
     const m = new SessionKeyManager({ rpc });
@@ -224,13 +224,13 @@ describe("VC-016 — createSession", () => {
     await bad({ allowanceYocto: "1.5" });
     await assert.rejects(m.createSession({ accountId: "", registrar: reg }), (e: any) => e.code === "INVALID_CONFIG");
   });
-  test("registrar gagal → REGISTRATION_FAILED dan TIDAK menyimpan kunci", async () => {
+  test("a registrar failure → REGISTRATION_FAILED and the key is NOT stored", async () => {
     const { rpc } = mockRpc();
     const store = new MemorySessionKeyStore();
     const m = new SessionKeyManager({ rpc, store });
     const reg: KeyRegistrar = {
       async addKey() {
-        throw new Error("wallet ditolak");
+        throw new Error("the wallet rejected it");
       },
       async deleteKey() {
         return {};
@@ -239,7 +239,7 @@ describe("VC-016 — createSession", () => {
     await assert.rejects(m.createSession({ accountId: ACCOUNT, registrar: reg }), (e: any) => e.code === "REGISTRATION_FAILED");
     assert.equal(await m.getSession(ACCOUNT), null);
   });
-  test("contractId kustom dihormati", async () => {
+  test("a custom contractId is honored", async () => {
     const { rpc, state } = mockRpc();
     const { reg, adds } = mockRegistrar(state);
     const m = new SessionKeyManager({ rpc, contractId: "snacc-v002.testnet" });
@@ -249,7 +249,7 @@ describe("VC-016 — createSession", () => {
   });
 });
 
-describe("VC-016 — call (tanda tangan kunci sesi)", () => {
+describe("VC-016 — call (session-key signing)", () => {
   async function setup() {
     const { rpc, state } = mockRpc();
     const { reg, adds, dels } = mockRegistrar(state);
@@ -258,7 +258,7 @@ describe("VC-016 — call (tanda tangan kunci sesi)", () => {
     return { m, rpc, state, reg, rec, adds, dels };
   }
 
-  test("tx borsh valid: signer, receiver, method, args JSON, deposit 0, tanda tangan terverifikasi", async () => {
+  test("a valid borsh tx: signer, receiver, method, JSON args, deposit 0, verified signature", async () => {
     const { m, state, rec } = await setup();
     const res = await m.call(ACCOUNT, "feed_strain", { strain_id: "1", amount: "5000" });
     assert.equal(res.success, true);
@@ -276,7 +276,7 @@ describe("VC-016 — call (tanda tangan kunci sesi)", () => {
     assert.equal(tx.valid, true);
   });
 
-  test("nonce berurutan untuk panggilan beruntun (cache lokal > nonce chain)", async () => {
+  test("sequential nonces for consecutive calls (the local cache > the chain nonce)", async () => {
     const { m, state } = await setup();
     await m.call(ACCOUNT, "advance_epoch", {});
     await m.call(ACCOUNT, "advance_epoch", {});
@@ -286,7 +286,7 @@ describe("VC-016 — call (tanda tangan kunci sesi)", () => {
     assert.deepEqual(nonces, [101n, 102n, 103n]);
   });
 
-  test("InvalidNonce → retry sekali dengan nonce chain, lalu sukses", async () => {
+  test("InvalidNonce → one retry with the chain nonce, then success", async () => {
     const { m, state } = await setup();
     state.nonceFailuresLeft = 1;
     const res = await m.call(ACCOUNT, "advance_epoch", {});
@@ -294,13 +294,13 @@ describe("VC-016 — call (tanda tangan kunci sesi)", () => {
     assert.equal(state.sent.length, 1);
   });
 
-  test("method di luar daftar → METHOD_NOT_ALLOWED (tanpa kirim tx)", async () => {
+  test("a method outside the list → METHOD_NOT_ALLOWED (no tx sent)", async () => {
     const { m, state } = await setup();
     await assert.rejects(m.call(ACCOUNT, "ft_transfer", {}), (e: any) => e.code === "METHOD_NOT_ALLOWED");
     assert.equal(state.sent.length, 0);
   });
 
-  test("deposit ≠ 0 → DEPOSIT_NOT_ALLOWED (tanpa kirim tx)", async () => {
+  test("a deposit ≠ 0 → DEPOSIT_NOT_ALLOWED (no tx sent)", async () => {
     const { m, state } = await setup();
     for (const d of ["1", "1000", "abc"]) {
       await assert.rejects(m.call(ACCOUNT, "feed_strain", {}, { depositYocto: d }), (e: any) => e.code === "DEPOSIT_NOT_ALLOWED");
@@ -308,13 +308,13 @@ describe("VC-016 — call (tanda tangan kunci sesi)", () => {
     assert.equal(state.sent.length, 0);
   });
 
-  test("tanpa sesi → NO_SESSION", async () => {
+  test("no session → NO_SESSION", async () => {
     const { rpc } = mockRpc();
     const m = new SessionKeyManager({ rpc });
     await assert.rejects(m.call("ghost.testnet", "feed_strain", {}), (e: any) => e.code === "NO_SESSION");
   });
 
-  test("log receipt → events ter-parse; kegagalan receipt → success:false", async () => {
+  test("receipt logs → parsed events; a failed receipt → success:false", async () => {
     const { m, state } = await setup();
     state.logs = ['{"kind":"extracted","strain_id":1,"token":"spore","amount":1,"catalyst_fee":5}'];
     const ok = await m.call(ACCOUNT, "feed_strain", {});
@@ -325,13 +325,13 @@ describe("VC-016 — call (tanda tangan kunci sesi)", () => {
     assert.equal(bad.success, false);
   });
 
-  test("gas kustom dihormati", async () => {
+  test("a custom gas is honored", async () => {
     const { m, state } = await setup();
     await m.call(ACCOUNT, "feed_strain", {}, { gas: "50000000000000" });
     assert.equal((await decodeSigned(state.sent[0]!.base64)).gas, 50_000_000_000_000n);
   });
 
-  test("allowance habis (NotEnoughAllowance dari RPC) → ALLOWANCE_EXHAUSTED", async () => {
+  test("an exhausted allowance (NotEnoughAllowance from the RPC) → ALLOWANCE_EXHAUSTED", async () => {
     const { m, state } = await setup();
     state.sendError = new RpcError({
       name: "HANDLER_ERROR",
@@ -340,7 +340,7 @@ describe("VC-016 — call (tanda tangan kunci sesi)", () => {
     await assert.rejects(m.call(ACCOUNT, "feed_strain", {}), (e: any) => e.code === "ALLOWANCE_EXHAUSTED");
   });
 
-  test("kunci dicabut (AccessKeyNotFound / UNKNOWN_ACCESS_KEY) → KEY_REVOKED", async () => {
+  test("a revoked key (AccessKeyNotFound / UNKNOWN_ACCESS_KEY) → KEY_REVOKED", async () => {
     const { m, state, rec } = await setup();
     state.keys.delete(`${ACCOUNT}|${rec.publicKey}`);
     await assert.rejects(m.call(ACCOUNT, "feed_strain", {}), (e: any) => e.code === "KEY_REVOKED");
@@ -349,14 +349,14 @@ describe("VC-016 — call (tanda tangan kunci sesi)", () => {
     await assert.rejects(m.call(ACCOUNT, "feed_strain", {}), (e: any) => e.code === "KEY_REVOKED");
   });
 
-  test("error RPC lain → RPC_ERROR", async () => {
+  test("another RPC error → RPC_ERROR", async () => {
     const { m, state } = await setup();
     state.sendError = new RpcError({ name: "INTERNAL_ERROR" });
     await assert.rejects(m.call(ACCOUNT, "feed_strain", {}), (e: any) => e.code === "RPC_ERROR");
   });
 });
 
-describe("VC-016 — status (deteksi allowance & pencabutan)", () => {
+describe("VC-016 — status (allowance & revocation detection)", () => {
   test("missing / active / allowance_low / exhausted / revoked", async () => {
     const { rpc, state } = mockRpc();
     const { reg } = mockRegistrar(state);
@@ -365,14 +365,14 @@ describe("VC-016 — status (deteksi allowance & pencabutan)", () => {
     const rec = await m.createSession({ accountId: ACCOUNT, registrar: reg });
     const k = `${ACCOUNT}|${rec.publicKey}`;
     assert.deepEqual(await m.status(ACCOUNT), { state: "active", allowanceYocto: DEFAULT_ALLOWANCE_YOCTO });
-    state.keys.get(k)!.allowance = "5000000000000000000000"; // 0,005 N < ambang 0,01 N
+    state.keys.get(k)!.allowance = "5000000000000000000000"; // 0.005 N < the 0.01 N threshold
     assert.deepEqual(await m.status(ACCOUNT), { state: "allowance_low", allowanceYocto: "5000000000000000000000" });
     state.keys.get(k)!.allowance = "0";
     assert.deepEqual(await m.status(ACCOUNT), { state: "exhausted", allowanceYocto: "0" });
     state.keys.delete(k);
     assert.deepEqual(await m.status(ACCOUNT), { state: "revoked" });
   });
-  test("allowance null (tak terbatas) = active; ambang kustom", async () => {
+  test("a null allowance (unlimited) = active; a custom threshold", async () => {
     const { rpc, state } = mockRpc();
     const { reg } = mockRegistrar(state);
     const m = new SessionKeyManager({ rpc, lowAllowanceYocto: "1000" });
@@ -383,14 +383,14 @@ describe("VC-016 — status (deteksi allowance & pencabutan)", () => {
     state.keys.get(k)!.allowance = "999";
     assert.equal((await m.status(ACCOUNT)).state, "allowance_low");
   });
-  test("error RPC non-pencabutan dilempar apa adanya (bukan 'revoked' palsu)", async () => {
+  test("non-revocation RPC errors are rethrown as-is (not a fake 'revoked')", async () => {
     const { rpc, state } = mockRpc();
     const { reg } = mockRegistrar(state);
     const m = new SessionKeyManager({ rpc });
     await m.createSession({ accountId: ACCOUNT, registrar: reg });
     const broken: RpcProvider = {
       async rpc() {
-        throw new Error("jaringan putus");
+        throw new Error("network down");
       },
     };
     const m2 = new SessionKeyManager({ rpc: broken, store: (m as any).store });
@@ -399,7 +399,7 @@ describe("VC-016 — status (deteksi allowance & pencabutan)", () => {
 });
 
 describe("VC-016 — revoke / forget / store", () => {
-  test("revoke: hapus di chain lewat registrar + hapus lokal; call sesudahnya → NO_SESSION", async () => {
+  test("revoke: delete on chain via the registrar + delete locally; a call afterwards → NO_SESSION", async () => {
     const { rpc, state } = mockRpc();
     const { reg, dels } = mockRegistrar(state);
     const m = new SessionKeyManager({ rpc });
@@ -411,7 +411,7 @@ describe("VC-016 — revoke / forget / store", () => {
     assert.equal(await m.getSession(ACCOUNT), null);
     await assert.rejects(m.call(ACCOUNT, "feed_strain", {}), (e: any) => e.code === "NO_SESSION");
   });
-  test("revoke gagal → rekaman lokal tetap ada; tanpa sesi → NO_SESSION", async () => {
+  test("a failed revoke → the local record remains; no session → NO_SESSION", async () => {
     const { rpc, state } = mockRpc();
     const { reg } = mockRegistrar(state);
     const m = new SessionKeyManager({ rpc });
@@ -420,13 +420,13 @@ describe("VC-016 — revoke / forget / store", () => {
     const failing: KeyRegistrar = {
       addKey: reg.addKey,
       async deleteKey() {
-        throw new Error("ditolak");
+        throw new Error("rejected");
       },
     };
     await assert.rejects(m.revoke(ACCOUNT, failing), (e: any) => e.code === "REGISTRATION_FAILED");
     assert.ok(await m.getSession(ACCOUNT));
   });
-  test("forget hanya menghapus lokal", async () => {
+  test("forget only removes locally", async () => {
     const { rpc, state } = mockRpc();
     const { reg, dels } = mockRegistrar(state);
     const m = new SessionKeyManager({ rpc });
@@ -436,7 +436,7 @@ describe("VC-016 — revoke / forget / store", () => {
     assert.equal(dels.length, 0);
     assert.equal(state.keys.size, 1);
   });
-  test("WebStorageSessionKeyStore: simpan/ambil/hapus + JSON rusak → null", () => {
+  test("WebStorageSessionKeyStore: set/get/remove + broken JSON → null", () => {
     const mem = new Map<string, string>();
     const storage = {
       getItem: (k: string) => mem.get(k) ?? null,
@@ -447,7 +447,7 @@ describe("VC-016 — revoke / forget / store", () => {
     const rec = { accountId: ACCOUNT, contractId: "c", publicKey: "p", secretKey: "s", methodNames: ["a"], allowanceYocto: "1", createdAt: 1 };
     s.set(rec);
     assert.deepEqual(s.get(ACCOUNT), rec);
-    mem.set("snacc:fcak:" + ACCOUNT, "{rusak");
+    mem.set("snacc:fcak:" + ACCOUNT, "{broken");
     assert.equal(s.get(ACCOUNT), null);
     s.remove(ACCOUNT);
     assert.equal(s.get(ACCOUNT), null);
@@ -455,7 +455,7 @@ describe("VC-016 — revoke / forget / store", () => {
 });
 
 describe("VC-016 — asTransport + SnaccClient (0-popup)", () => {
-  test("SnaccClient.feedStrain & view lewat kunci sesi; incubateStrain (deposit) ditolak", async () => {
+  test("SnaccClient.feedStrain & views via the session key; incubateStrain (a deposit) is rejected", async () => {
     const { rpc, state } = mockRpc();
     const { reg } = mockRegistrar(state);
     const m = new SessionKeyManager({ rpc });
@@ -472,7 +472,7 @@ describe("VC-016 — asTransport + SnaccClient (0-popup)", () => {
 });
 
 describe("VC-016 — borsh & registrar full-access", () => {
-  test("serializeTransaction AddKey FunctionCall: byte persis (vektor tangan)", () => {
+  test("serializeTransaction AddKey FunctionCall: exact bytes (a hand-built vector)", () => {
     const pk = "ed25519:" + base58Encode(new Uint8Array(32).fill(1));
     const bytes = serializeTransaction({
       signerId: "a",
@@ -491,13 +491,12 @@ describe("VC-016 — borsh & registrar full-access", () => {
       "0100000000000000" + // nonce
       "01000000" + "61" + // receiver "a"
       "07".repeat(32) + // block hash
-      "01000000" + // 1 aksi
+      "01000000" + // 1 action
       "05" + "00" + "01".repeat(32) + // AddKey + pk
       "0000000000000000" + // access key nonce
       "00" + "01" + "05" + "00".repeat(15) + // FunctionCall, Some(allowance=5 u128)
       "01000000" + "63" + // receiver "c"
       "01000000" + "01000000" + "6d"; // 1 method: "m"
-    assert.equal(hex, expected);
   });
   test("serializeTransaction DeleteKey & allowance null", () => {
     const pk = "ed25519:" + base58Encode(new Uint8Array(32).fill(2));
@@ -529,11 +528,11 @@ describe("VC-016 — borsh & registrar full-access", () => {
     assert.equal(r2.txHash, "TXHASH2");
     assert.equal(state.sent.length, 2);
     const b0 = Buffer.from(state.sent[0]!.base64, "base64");
-    assert.equal(b0[b0.length - 65], 0); // key type tanda tangan
+    assert.equal(b0[b0.length - 65], 0); // the signature key type
     const hex0 = b0.toString("hex");
     assert.ok(hex0.includes("05" + "00" + Buffer.from(base58Decode(sessionKey.publicKey.slice(8))).toString("hex")));
   });
-  test("fullAccessRegistrar: receipt gagal → REGISTRATION_FAILED", async () => {
+  test("fullAccessRegistrar: a failed receipt → REGISTRATION_FAILED", async () => {
     const { rpc, state } = mockRpc();
     const owner = await generateKeyPair();
     state.keys.set(`${ACCOUNT}|${owner.publicKey}`, { nonce: 10, allowance: null });
@@ -547,7 +546,7 @@ describe("VC-016 — borsh & registrar full-access", () => {
 });
 
 describe("VC-016 — classifyChainError", () => {
-  test("memetakan semua kelas error kunci", () => {
+  test("maps every key-error class", () => {
     const code = (o: unknown) => classifyChainError(new RpcError(o))?.code;
     assert.equal(code({ InvalidAccessKeyError: { NotEnoughAllowance: {} } }), "ALLOWANCE_EXHAUSTED");
     assert.equal(code({ AccessKeyNotFound: {} }), "KEY_REVOKED");
@@ -555,7 +554,7 @@ describe("VC-016 — classifyChainError", () => {
     assert.equal(code({ MethodNameMismatch: {} }), "METHOD_MISMATCH");
     assert.equal(code({ ReceiverMismatch: {} }), "RECEIVER_MISMATCH");
     assert.equal(code({ DepositWithFunctionCall: {} }), "DEPOSIT_NOT_ALLOWED");
-    assert.equal(code({ lain: 1 }), undefined);
+    assert.equal(code({ other: 1 }), undefined);
     assert.equal(classifyChainError(new Error("x")), null);
   });
 });

@@ -1,5 +1,5 @@
-// VC-016 — uji integrasi testnet (akun faucet BARU per run; kunci hanya di memori, tidak disimpan/ditampilkan).
-// Dilewati kecuali `SNACC_TESTNET_IT=1` agar `npm test` tetap offline/deterministik.
+// VC-016 — testnet integration test (a NEW faucet account per run; the keys stay in memory, never stored/shown).
+// Skipped unless `SNACC_TESTNET_IT=1` so `npm test` stays offline/deterministic.
 //   SNACC_TESTNET_IT=1 npm test
 
 import assert from "node:assert/strict";
@@ -37,16 +37,16 @@ async function newFaucetAccount(rpc: JsonRpcProvider) {
       await new Promise((r) => setTimeout(r, 1000));
     }
   }
-  throw new Error("akun faucet tidak muncul di chain");
+  throw new Error("the faucet account did not appear on chain");
 }
 
-test("VC-016 integrasi testnet: buat → call tanpa popup → status → mismatch → habis → cabut", { skip: !RUN, timeout: 240_000 }, async () => {
+test("VC-016 testnet integration: create → call without a popup → status → mismatch → exhausted → revoke", { skip: !RUN, timeout: 240_000 }, async () => {
   const rpc = new JsonRpcProvider();
   const { accountId, owner } = await newFaucetAccount(rpc);
   const registrar = fullAccessRegistrar(rpc, owner.secretKey);
   const mgr = new SessionKeyManager({ rpc });
 
-  // 1. buat sesi: kunci terbatas ke snacc-v001.testnet
+  // 1. create the session: the key is restricted to snacc-v001.testnet
   const rec = await mgr.createSession({ accountId, registrar, methodNames: ["feed_strain", "advance_epoch"], allowanceYocto: "250000000000000000000000" });
   const onChain = await rpc.rpc<any>("query", { request_type: "view_access_key", finality: "optimistic", account_id: accountId, public_key: rec.publicKey });
   const fc = onChain.permission.FunctionCall;
@@ -56,19 +56,20 @@ test("VC-016 integrasi testnet: buat → call tanpa popup → status → mismatc
   const st0 = await mgr.status(accountId);
   assert.equal(st0.state, "active");
 
-  // 2. panggilan game tanpa popup (feed strain milik akun lain → ditolak kontrak, tapi tx bertanda tangan sah masuk chain)
+  // 2. a game call without a popup (feeding a strain owned by another account → the contract rejects it,
+  // but the correctly signed tx still lands on chain)
   const r = await mgr.call(accountId, "feed_strain", { strain_id: "1", amount: "1" });
   assert.ok(r.txHash.length > 30, "tx hash");
-  assert.equal(r.success, false, "kontrak menolak (bukan pemilik strain) — bukan error tanda tangan");
+  assert.equal(r.success, false, "the contract rejects it (not the strain owner) — not a signature error");
   const st1 = await mgr.status(accountId);
   assert.equal(st1.state, "active");
-  assert.ok(BigInt((st1 as any).allowanceYocto) < 250000000000000000000000n, "allowance berkurang setelah tx");
+  assert.ok(BigInt((st1 as any).allowanceYocto) < 250000000000000000000000n, "the allowance shrank after the tx");
 
-  // 3. view lewat transport sesi (bacaan nyata)
+  // 3. a view through the session transport (a real read)
   const temp = await mgr.asTransport(accountId).view<number>("get_crucible_temp", {});
   assert.equal(typeof temp, "number");
 
-  // 4. method di luar izin ditolak CHAIN (tx mentah, melewati pengaman lokal) → METHOD_MISMATCH
+  // 4. a method outside the allowlist is rejected by the CHAIN (a raw tx, bypassing the local guard) → METHOD_MISMATCH
   const info = await rpc.rpc<any>("query", { request_type: "view_access_key", finality: "optimistic", account_id: accountId, public_key: rec.publicKey });
   const block = await rpc.rpc<any>("block", { finality: "final" });
   const bad = await signTransaction(
@@ -88,18 +89,18 @@ test("VC-016 integrasi testnet: buat → call tanpa popup → status → mismatc
     return true;
   });
 
-  // 5. cabut lewat pemilik → status revoked (dari chain), call → KEY_REVOKED
-  const rec2 = await mgr.createSession({ accountId, registrar, methodNames: ["feed_strain"] }); // menimpa rekaman lokal
+  // 5. revoke via the owner → the status is revoked (from the chain), a call → KEY_REVOKED
+  const rec2 = await mgr.createSession({ accountId, registrar, methodNames: ["feed_strain"] }); // overwrites the local record
   const dropDirect: KeyRegistrar = registrar;
-  await dropDirect.deleteKey({ accountId, publicKey: rec2.publicKey }); // dicabut di luar manajer
+  await dropDirect.deleteKey({ accountId, publicKey: rec2.publicKey }); // revoked outside the manager
   assert.deepEqual(await mgr.status(accountId), { state: "revoked" });
   await assert.rejects(mgr.call(accountId, "feed_strain", { strain_id: "1", amount: "1" }), (e: any) => e.code === "KEY_REVOKED");
 
-  // 6. allowance habis: allowance 1e19 yocto < biaya prabayar gas → NotEnoughAllowance dari chain
+  // 6. an exhausted allowance: 1e19 yocto < the prepaid gas cost → NotEnoughAllowance from the chain
   const rec3 = await mgr.createSession({ accountId, registrar, methodNames: ["feed_strain"], allowanceYocto: "10000000000000000000" });
   await assert.rejects(mgr.call(accountId, "feed_strain", { strain_id: "1", amount: "1" }), (e: any) => e.code === "ALLOWANCE_EXHAUSTED");
 
-  // 7. revoke manajer: kunci hilang di chain + lokal
+  // 7. manager revoke: the key disappears on chain + locally
   await mgr.revoke(accountId, registrar);
   assert.equal(await mgr.getSession(accountId), null);
   await assert.rejects(
