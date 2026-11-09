@@ -246,20 +246,27 @@ export interface Nep141TransferEvent {
   kind: "ft_transfer";
   old_owner_id: string;
   new_owner_id: string;
-  amount: number;
+  // NEP-141 events standard: a decimal string (u128). The parser accepts both
+  // a JSON number (the currently deployed contract) and a string (after
+  // redeploy) and always normalizes to a decimal string; a string input is
+  // never routed through a lossy JS number.
+  amount: string;
   memo: string | null;
 }
 
 export interface Nep141BurnEvent {
   kind: "ft_burn";
   owner_id: string;
-  amount: number;
+  // Same decimal-string rule as `ft_transfer` (`amount` above).
+  amount: string;
+  memo: string | null;
 }
 
 export interface Nep141MintEvent {
   kind: "ft_mint";
   owner_id: string;
-  amount: number;
+  // Same decimal-string rule as `ft_transfer` (`amount` above).
+  amount: string;
   memo?: string | null;
 }
 
@@ -401,6 +408,40 @@ function unwrap(raw: string): Record<string, unknown> {
   return record;
 }
 
+/** NEP-141 kinds whose `amount` is a u128 decimal (emitted as a string). */
+const NEP141_KINDS = new Set(["ft_transfer", "ft_burn", "ft_mint"]);
+
+/**
+ * Normalize a NEP-141 `amount` to a decimal string.
+ * - String input: validated as a bare decimal integer and returned verbatim —
+ *   never routed through `Number()`, which loses precision above 2^53.
+ * - Number input (the currently deployed contract): an exact, safe-integer
+ *   JS number becomes its decimal string. A number that JSON.parse already
+ *   rounded (above 2^53) cannot be recovered; the value is then whatever the
+ *   number holds — another reason to prefer the string form.
+ */
+function normalizeNep141Amount(value: unknown): string {
+  if (typeof value === "string") {
+    if (!/^(0|[1-9][0-9]*)$/.test(value)) {
+      throw new EventParseError(
+        "INVALID_JSON",
+        `NEP-141 amount must be a decimal string, got: ${value}`,
+      );
+    }
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new EventParseError(
+        "INVALID_JSON",
+        `NEP-141 amount number must be a non-negative safe integer, got: ${value}`,
+      );
+    }
+    return String(value);
+  }
+  throw new EventParseError("INVALID_JSON", "NEP-141 amount must be a string or a number");
+}
+
 /** Validate the required fields per kind, then return the typed event. */
 function buildEvent(kind: string, fields: Record<string, unknown>): SnaccEvent {
   const required = REQUIRED_FIELDS[kind];
@@ -413,6 +454,20 @@ function buildEvent(kind: string, fields: Record<string, unknown>): SnaccEvent {
       "MISSING_FIELDS",
       `the event ${kind} is missing fields: ${missing.join(", ")}`,
     );
+  }
+  if (NEP141_KINDS.has(kind)) {
+    fields.amount = normalizeNep141Amount(fields.amount);
+    // Old `ft_burn` logs carry no `memo`; the NEP-141 shape emits `memo: null`.
+    if (kind === "ft_burn" && fields.memo === undefined) {
+      fields.memo = null;
+    }
+    if (
+      fields.memo !== undefined &&
+      fields.memo !== null &&
+      typeof fields.memo !== "string"
+    ) {
+      throw new EventParseError("INVALID_JSON", `NEP-141 memo must be a string or null, got: ${typeof fields.memo}`);
+    }
   }
   return { kind, ...fields } as unknown as SnaccEvent;
 }
