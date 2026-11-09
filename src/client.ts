@@ -231,7 +231,7 @@ export class SnaccClient {
     return this.call("feed_strain", { strain_id: u(strain_id), amount: u(amount) });
   }
 
-  // ─── M&A, reproduksi, koloni ───
+  // ─── M&A, reproduction, colony ───
 
   spliceStrains(dominant_id: U128, absorbed_id: U128) {
     return this.call("splice_strains", {
