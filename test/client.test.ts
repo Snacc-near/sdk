@@ -139,6 +139,80 @@ describe("SDK-102..103 — SnaccClient: view wrappers", () => {
     assert.equal(await client.getTotalWealth("a.testnet"), "800");
     assert.equal(calls.length, 12, "12 views recorded");
   });
+
+  test("NEP-171/177/145 views pass the exact contract arguments", async () => {
+    const { transport, calls } = mockTransport({
+      nft_metadata: { spec: "nft-1.0.0", name: "Snacc", symbol: "$SNACC", icon: null, base_uri: null, reference: null, reference_hash: null },
+      nft_total_supply: "3",
+      nft_tokens: [],
+      nft_supply_for_owner: "2",
+      nft_tokens_for_owner: [],
+      storage_balance_bounds: { min: "5000000000000000000000", max: null },
+      protocol_version: "snacc-v001",
+      get_solvency_tier: "Tier1Healthy",
+      get_sandbox_clock: [false, 0, 123],
+    });
+    const client = new SnaccClient({ contractId: "snacc-v001.testnet", transport });
+    assert.equal((await client.nftMetadata()).spec, "nft-1.0.0");
+    assert.equal(await client.nftTotalSupply(), "3");
+    assert.deepEqual(await client.nftTokens(), []);
+    assert.equal(await client.nftSupplyForOwner("a.testnet"), "2");
+    assert.deepEqual(await client.nftTokensForOwner("a.testnet", 0, 10), []);
+    assert.equal((await client.storageBalanceBounds()).min, "5000000000000000000000");
+    assert.equal(await client.protocolVersion(), "snacc-v001");
+    assert.equal(await client.getSolvencyTier(1), "Tier1Healthy");
+    assert.deepEqual(await client.getSandboxClock(), [false, 0, 123]);
+    assert.deepEqual(
+      calls.map((c) => c.method),
+      [
+        "nft_metadata",
+        "nft_total_supply",
+        "nft_tokens",
+        "nft_supply_for_owner",
+        "nft_tokens_for_owner",
+        "storage_balance_bounds",
+        "protocol_version",
+        "get_solvency_tier",
+        "get_sandbox_clock",
+      ],
+    );
+    assert.deepEqual(calls[2]?.args, { from_index: null, limit: null });
+    assert.deepEqual(calls[4]?.args, { account_id: "a.testnet", from_index: "0", limit: 10 });
+    assert.deepEqual(calls[7]?.args, { strain_id: "1" });
+  });
+
+  test("storage calls carry the right deposit (deposit == min / 1 yocto / 0)", async () => {
+    const { transport, calls } = mockTransport();
+    const client = new SnaccClient({ contractId: "c.testnet", transport });
+    await client.storageDeposit();
+    await client.storageDeposit("b.testnet", { registrationOnly: true, depositYocto: "9000000000000000000000" });
+    await client.storageWithdraw();
+    await client.storageUnregister();
+    await client.storageUnregister(true);
+    assert.deepEqual(calls[0]?.args, { account_id: null, registration_only: null });
+    assert.equal(calls[0]?.deposit, "5000000000000000000000");
+    assert.deepEqual(calls[1]?.args, { account_id: "b.testnet", registration_only: true });
+    assert.equal(calls[1]?.deposit, "9000000000000000000000");
+    assert.deepEqual(calls[2]?.args, { amount: null });
+    assert.equal(calls[2]?.deposit, "0");
+    assert.deepEqual(calls[3]?.args, { force: null });
+    assert.equal(calls[3]?.deposit, ONE_YOCTO);
+    assert.deepEqual(calls[4]?.args, { force: true });
+    assert.equal(calls[4]?.deposit, ONE_YOCTO);
+  });
+
+  test("attested-signer and sandbox calls use deposit 0", async () => {
+    const { transport, calls } = mockTransport();
+    const client = new SnaccClient({ contractId: "c.testnet", transport });
+    await client.removeAttestedSigner("aa");
+    await client.advanceSandboxClock(2);
+    assert.equal(calls[0]?.method, "remove_attested_signer");
+    assert.deepEqual(calls[0]?.args, { pubkey_hex: "aa" });
+    assert.equal(calls[0]?.deposit, "0");
+    assert.equal(calls[1]?.method, "advance_sandbox_clock");
+    assert.deepEqual(calls[1]?.args, { hours: 2 });
+    assert.equal(calls[1]?.deposit, "0");
+  });
 });
 
 describe("SDK-104 — the right automatic deposit", () => {

@@ -15,6 +15,55 @@ import { parseEventLine, type SnaccEvent } from "./events.js";
 
 export const ONE_YOCTO = "1";
 export const MATERIALIZE_DEPOSIT_YOCTO = "20000000000000000000000"; // 20 milliNEAR
+/** First-registration storage minimum (5 milliNEAR, `storage_deposit` / `storage_balance_bounds`). */
+export const STORAGE_DEPOSIT_MIN_YOCTO = "5000000000000000000000";
+
+// ─── Contract view types (exact shapes from `contracts/snacc/src/lib.rs`) ───
+
+/** `NEP-177` contract-level metadata (`nft_metadata`). */
+export interface NftContractMetadata {
+  spec: string;
+  name: string;
+  symbol: string;
+  icon: string | null;
+  base_uri: string | null;
+  reference: string | null;
+  reference_hash: string | null;
+}
+
+/** `NEP-141` metadata (`ft_metadata`, decimals are 24 by recorded decision). */
+export interface FungibleTokenMetadata {
+  spec: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  icon: string | null;
+  reference: string | null;
+  reference_hash: string | null;
+}
+
+/** `NEP-171` token view (`nft_token` and the `nft_tokens*` enumerations). */
+export interface NftTokenView {
+  token_id: string;
+  owner_id: string;
+  metadata: {
+    title: string;
+    description: string;
+    media: string;
+  };
+}
+
+/** MVP storage balance (`storage_deposit` / `storage_withdraw` / `storage_balance_of`). */
+export interface StorageBalance {
+  total: string;
+  available: string;
+}
+
+/** `NEP-145` storage balance bounds (`storage_balance_bounds`); `max` is unbounded. */
+export interface StorageBalanceBounds {
+  min: string;
+  max: string | null;
+}
 
 /** A minimal JSON-RPC transport — real implementations live in the wallet/backend; a mock in tests. */
 export interface Transport {
@@ -144,10 +193,56 @@ export class SnaccClient {
     return this.transport.view<string>("ft_total_supply", {});
   }
   ftMetadata() {
-    return this.transport.view<Record<string, unknown>>("ft_metadata", {});
+    return this.transport.view<FungibleTokenMetadata>("ft_metadata", {});
   }
   nftToken(token_id: string) {
-    return this.transport.view<Record<string, unknown>>("nft_token", { token_id });
+    return this.transport.view<NftTokenView>("nft_token", { token_id });
+  }
+
+  // ─── NEP-171/177/145 views (PR #21 surface) ───
+
+  /** `NEP-177` contract-level metadata. */
+  nftMetadata() {
+    return this.transport.view<NftContractMetadata>("nft_metadata", {});
+  }
+  /** `NEP-181` total minted NFTs. */
+  nftTotalSupply() {
+    return this.transport.view<string>("nft_total_supply", {});
+  }
+  /** `NEP-181` paginated enumeration; `from_index`/`limit` are optional (`null` = default). */
+  nftTokens(from_index?: U128 | null, limit?: number | null) {
+    return this.transport.view<NftTokenView[]>("nft_tokens", {
+      from_index: from_index == null ? null : u(from_index),
+      limit: limit ?? null,
+    });
+  }
+  /** `NEP-181` per-owner supply. */
+  nftSupplyForOwner(account_id: string) {
+    return this.transport.view<string>("nft_supply_for_owner", { account_id });
+  }
+  /** `NEP-181` per-owner enumeration with pagination. */
+  nftTokensForOwner(account_id: string, from_index?: U128 | null, limit?: number | null) {
+    return this.transport.view<NftTokenView[]>("nft_tokens_for_owner", {
+      account_id,
+      from_index: from_index == null ? null : u(from_index),
+      limit: limit ?? null,
+    });
+  }
+  /** `NEP-145` storage balance bounds (minimum for first registration; `max` unbounded). */
+  storageBalanceBounds() {
+    return this.transport.view<StorageBalanceBounds>("storage_balance_bounds", {});
+  }
+  /** Contract protocol version string (`snacc-v001`). */
+  protocolVersion() {
+    return this.transport.view<string>("protocol_version", {});
+  }
+  /** Solvency tier of a strain (`Tier1Healthy` / `Tier2Chapter11Distressed` / `Tier3Chapter7Insolvent`). */
+  getSolvencyTier(strain_id: U128) {
+    return this.transport.view<string>("get_solvency_tier", { strain_id: u(strain_id) });
+  }
+  /** Sandbox clock view: `[enabled, sandbox_time_offset_sec, now_sec]`. */
+  getSandboxClock() {
+    return this.transport.view<[boolean, number, number]>("get_sandbox_clock", {});
   }
 
   // ─── F1: birth & sub-account ───
@@ -331,7 +426,47 @@ export class SnaccClient {
   ftBurn(strain_id: U128, amount: U128) {
     return this.call("ft_burn", { strain_id: u(strain_id), amount: u(amount) });
   }
-  storageDeposit(account_id?: string) {
-    return this.call("storage_deposit", { account_id: account_id ?? null });
+
+  // ─── Attested signers (TEE trust list) ───
+
+  removeAttestedSigner(pubkey_hex: string) {
+    return this.call("remove_attested_signer", { pubkey_hex });
+  }
+
+  /** Advance the sandbox clock (contract owner only on chain; deposit 0). */
+  advanceSandboxClock(hours: number) {
+    return this.call("advance_sandbox_clock", { hours });
+  }
+
+  // ─── Storage (NEP-145) ───
+  // All storage calls below are payable on chain and carry a deposit, so they must
+  // NOT go through the session (function-call) key path — see `DEPOSIT_METHODS`.
+
+  /**
+   * Register/top up a storage deposit for `account_id` (defaults to the caller).
+   * Deposit defaults to the first-registration minimum (5 milliNEAR); pass
+   * `depositYocto` for top-ups. `registrationOnly` uses NEP-145 semantics
+   * (register with exactly the minimum and refund any excess).
+   */
+  storageDeposit(account_id?: string, opts: { registrationOnly?: boolean; depositYocto?: string } = {}) {
+    return this.call(
+      "storage_deposit",
+      {
+        account_id: account_id ?? null,
+        registration_only: opts.registrationOnly ?? null,
+      },
+      opts.depositYocto ?? STORAGE_DEPOSIT_MIN_YOCTO,
+    );
+  }
+  /**
+   * Withdraw the excess storage deposit. `#[payable]` on chain but valid with a
+   * 0 deposit (the minimum stays locked while the account holds $SNACC).
+   */
+  storageWithdraw(amount?: U128 | null) {
+    return this.call("storage_withdraw", { amount: amount == null ? null : u(amount) });
+  }
+  /** Remove the caller's storage registration; `assert_one_yocto` → 1 yoctoNEAR. `force` unregisters even with a balance. */
+  storageUnregister(force?: boolean | null) {
+    return this.call("storage_unregister", { force: force ?? null }, ONE_YOCTO);
   }
 }

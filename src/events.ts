@@ -256,6 +256,13 @@ export interface Nep141BurnEvent {
   amount: number;
 }
 
+export interface Nep141MintEvent {
+  kind: "ft_mint";
+  owner_id: string;
+  amount: number;
+  memo?: string | null;
+}
+
 export interface Nep171TransferEvent {
   kind: "nft_transfer";
   old_owner_id: string;
@@ -292,6 +299,7 @@ export type SnaccEvent =
   | DividendClaimedEvent
   | Nep141TransferEvent
   | Nep141BurnEvent
+  | Nep141MintEvent
   | Nep171TransferEvent;
 
 const KNOWN_KINDS = new Set([
@@ -321,6 +329,7 @@ const KNOWN_KINDS = new Set([
   "dividend_claimed",
   "ft_transfer",
   "ft_burn",
+  "ft_mint",
   "nft_transfer",
 ]);
 
@@ -352,6 +361,7 @@ const REQUIRED_FIELDS: Record<string, string[]> = {
   dividend_claimed: ["strain_id", "epoch", "contribution", "payout", "pool_after"],
   ft_transfer: ["old_owner_id", "new_owner_id", "amount", "memo"],
   ft_burn: ["owner_id", "amount"],
+  ft_mint: ["owner_id", "amount"],
   nft_transfer: ["old_owner_id", "new_owner_id", "token_ids", "approved_account_ids", "memo"],
 };
 

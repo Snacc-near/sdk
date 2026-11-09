@@ -52,6 +52,7 @@ export const DEPOSIT_METHODS: readonly string[] = [
   "ft_transfer",
   "ft_transfer_call",
   "storage_deposit",
+  "storage_unregister",
 ];
 
 export type SessionKeyErrorCode =
