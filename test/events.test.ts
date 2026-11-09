@@ -99,6 +99,27 @@ describe("SDK-107 — the standard NEP-297 wrapper (EVENT_JSON:, the VC-010 shap
       catalyst_fee: 100,
     });
   });
+
+  test("NEP-141 ft_mint (with memo)", () => {
+    const ev = parseEventLine(
+      'EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_mint","data":[{"owner_id":"a.testnet","amount":500,"memo":"bonus"}]}',
+    );
+    assert.deepEqual(ev, { kind: "ft_mint", owner_id: "a.testnet", amount: 500, memo: "bonus" });
+  });
+
+  test("NEP-141 ft_mint (memo absent)", () => {
+    const ev = parseEventLine(
+      'EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_mint","data":[{"owner_id":"a.testnet","amount":500}]}',
+    );
+    assert.deepEqual(ev, { kind: "ft_mint", owner_id: "a.testnet", amount: 500 });
+  });
+
+  test("NEP-141 ft_mint missing a required field → MISSING_FIELDS", () => {
+    assert.throws(
+      () => parseEventLine('EVENT_JSON:{"standard":"nep141","version":"1.0.0","event":"ft_mint","data":[{"amount":500}]}'),
+      (err: unknown) => err instanceof EventParseError && err.reason === "MISSING_FIELDS",
+    );
+  });
 });
 
 describe("SDK-108 — controlled errors & non-event lines", () => {
