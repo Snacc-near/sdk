@@ -516,7 +516,7 @@ describe("VC-016 — borsh & registrar full-access", () => {
     ).toString("hex");
     assert.ok(add.includes("0000000000000000" + "00" + "00" + "01000000" + "63" + "00000000"));
   });
-  test("fullAccessRegistrar: addKey/deleteKey ditandatangani kunci full-access & terkirim", async () => {
+  test("fullAccessRegistrar: addKey/deleteKey are signed by the full-access key & delivered", async () => {
     const { rpc, state } = mockRpc();
     const owner = await generateKeyPair();
     state.keys.set(`${ACCOUNT}|${owner.publicKey}`, { nonce: 10, allowance: null });

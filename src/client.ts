@@ -150,9 +150,9 @@ export class SnaccClient {
     return this.transport.view<Record<string, unknown>>("nft_token", { token_id });
   }
 
-  // ─── F1: lahir & sub-account ───
+  // ─── F1: birth & sub-account ───
 
-  /** Deposit otomatis: attached == initial_snacc_stake. */
+  /** Automatic deposit: attached == initial_snacc_stake. */
   incubateStrain(role: string, initialSnaccStake: U128, initialSpores: number) {
     return this.call(
       "incubate_strain",
@@ -160,12 +160,12 @@ export class SnaccClient {
       u(initialSnaccStake),
     );
   }
-  /** Deposit otomatis: ≥ 20 milliNEAR (0.02 NEAR). */
+  /** Automatic deposit: ≥ 20 milliNEAR (0.02 NEAR). */
   materializeSubaccount(strain_id: U128) {
     return this.call("materialize_subaccount", { strain_id: u(strain_id) }, MATERIALIZE_DEPOSIT_YOCTO);
   }
 
-  // ─── F2: rantai pasok (deposit == fee; transmute boleh diskon diet ×0,8) ───
+  // ─── F2: the supply chain (deposit == fee; transmute may use the ×0.8 diet discount) ───
 
   extractSpores(strain_id: U128, spore_type: string, catalystFee: U128) {
     return this.call(
@@ -277,7 +277,7 @@ export class SnaccClient {
     });
   }
 
-  // ─── Dividen DK-033/044 ───
+  // ─── Dividends DK-033/044 ───
 
   synthesizeAndRedeemAether(strain_id: U128, amount: U128) {
     return this.call("synthesize_and_redeem_aether", {
@@ -298,7 +298,7 @@ export class SnaccClient {
     return this.call("register_attested_signer", { pubkey_hex, attested_at_sec: u(attested_at_sec) });
   }
 
-  // ─── Standar transfer (1 yoctoNEAR) ───
+  // ─── Standard transfers (1 yoctoNEAR) ───
 
   nftTransfer(receiver_id: string, token_id: string, approval_id?: string | null, memo?: string | null) {
     return this.call(
