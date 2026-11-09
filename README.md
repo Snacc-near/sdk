@@ -26,8 +26,38 @@ game calls without wallet popups. Dependency-free (WebCrypto ed25519 + borsh).
 
 **NEAR protocol constraint:** a function-call key cannot carry a deposit. Methods that require a deposit
 (`incubate_strain`, `materialize_subaccount`, `extract_spores`, `transmute_spores_to_enzyme`,
-`synthesize_elixir`, `ft/nft_transfer*`, `storage_deposit`) **still go through the wallet**; only the deposit-0
+`synthesize_elixir`, `ft/nft_transfer*`, `storage_deposit`, `storage_unregister`) **still go through the wallet**; only the deposit-0
 methods (`SIGNLESS_METHODS`, e.g. `feed_strain`, `allocate_atp`, `splice_strains`) are signless.
+
+## `SnaccClient` — contract surface (`SDK-101..106`)
+
+`src/client.ts` wraps every public contract method (verified by `test/parity.test.ts`
+against the contract at `cabe745`; the 5 callbacks/init/migrate are explicitly
+excluded there with reasons). Views + calls:
+
+| Client method | Contract method | Deposit |
+| --- | --- | --- |
+| `nftMetadata()` | `nft_metadata` (NEP-177) | 0 (view) |
+| `nftTotalSupply()` | `nft_total_supply` (NEP-181) | 0 (view) |
+| `nftTokens(from_index?, limit?)` | `nft_tokens` | 0 (view) |
+| `nftSupplyForOwner(account_id)` | `nft_supply_for_owner` | 0 (view) |
+| `nftTokensForOwner(account_id, from_index?, limit?)` | `nft_tokens_for_owner` | 0 (view) |
+| `storageBalanceBounds()` | `storage_balance_bounds` (NEP-145) | 0 (view) |
+| `protocolVersion()` | `protocol_version` | 0 (view) |
+| `getSolvencyTier(strain_id)` | `get_solvency_tier` | 0 (view) |
+| `getSandboxClock()` | `get_sandbox_clock` | 0 (view) |
+| `storageDeposit(account_id?, opts?)` | `storage_deposit` | min 5 milliNEAR (`registrationOnly` uses NEP-145 semantics) |
+| `storageWithdraw(amount?)` | `storage_withdraw` | 0 |
+| `storageUnregister(force?)` | `storage_unregister` | 1 yoctoNEAR |
+| `removeAttestedSigner(pubkey_hex)` | `remove_attested_signer` | 0 |
+| `advanceSandboxClock(hours)` | `advance_sandbox_clock` | 0 |
+
+Typed views: `NftContractMetadata`, `NftTokenView`, `FungibleTokenMetadata`,
+`StorageBalance`, `StorageBalanceBounds` (U128 values are decimal strings).
+Event parser additions: NEP-297 `ft_mint` (`{owner_id, amount, memo?}`) alongside
+`ft_transfer` / `ft_burn` (`N141-105`). Deposit methods (`storage_deposit`,
+`storage_unregister`, …) are in `DEPOSIT_METHODS` and never valid on the
+signless session-key path.
 
 ```bash
 npm ci && npm test
