@@ -274,6 +274,32 @@ describe("SDK-104 — the right automatic deposit", () => {
     assert.deepEqual(calls[0]?.args, { receiver_id: "b.testnet", amount: "500", memo: "memo" });
   });
 
+  test("EN-126: nft_transfer / nft_transfer_call send approval_id as a JSON number (NEP-171 Option<u64>), or null", async () => {
+    const { transport, calls } = mockTransport();
+    const client = new SnaccClient({ contractId: "c.testnet", transport });
+    await client.nftTransfer("b.testnet", "1", 7, "gift");
+    await client.nftTransferCall("b.testnet", "1", "msg", 42, null);
+    await client.nftTransfer("b.testnet", "1");
+    await client.nftTransferCall("b.testnet", "1", "msg", null);
+
+    assert.deepEqual(calls[0]?.args, { receiver_id: "b.testnet", token_id: "1", approval_id: 7, memo: "gift" });
+    assert.deepEqual(calls[1]?.args, { receiver_id: "b.testnet", token_id: "1", msg: "msg", approval_id: 42, memo: null });
+    assert.equal(typeof calls[0]?.args.approval_id, "number");
+    assert.equal(typeof calls[1]?.args.approval_id, "number");
+    // What goes over the wire: `"approval_id":7`, not `"approval_id":"7"`.
+    assert.match(JSON.stringify(calls[0]?.args), /"approval_id":7[,}]/);
+    assert.match(JSON.stringify(calls[1]?.args), /"approval_id":42[,}]/);
+    // Omitted or null stays JSON null.
+    assert.equal(calls[2]?.args.approval_id, null);
+    assert.equal(calls[3]?.args.approval_id, null);
+
+    // The type no longer accepts a string.
+    // @ts-expect-error approval_id is number | null, not a string
+    await client.nftTransfer("b.testnet", "1", "7");
+    // @ts-expect-error approval_id is number | null, not a string
+    await client.nftTransferCall("b.testnet", "1", "msg", "7");
+  });
+
   test("zero-cost methods: feed/claim/M&A/NPC/advance/TEE/burn/register = deposit 0", async () => {
     const { transport, calls } = mockTransport();
     const client = new SnaccClient({ contractId: "c.testnet", transport });

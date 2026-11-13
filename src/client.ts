@@ -395,14 +395,15 @@ export class SnaccClient {
 
   // ─── Standard transfers (1 yoctoNEAR) ───
 
-  nftTransfer(receiver_id: string, token_id: string, approval_id?: string | null, memo?: string | null) {
+  // NEP-171: `approval_id` is `Option<u64>`, so it goes over JSON as a number (or null), not as a string.
+  nftTransfer(receiver_id: string, token_id: string, approval_id?: number | null, memo?: string | null) {
     return this.call(
       "nft_transfer",
       { receiver_id, token_id, approval_id: approval_id ?? null, memo: memo ?? null },
       ONE_YOCTO,
     );
   }
-  nftTransferCall(receiver_id: string, token_id: string, msg: string, approval_id?: string | null, memo?: string | null) {
+  nftTransferCall(receiver_id: string, token_id: string, msg: string, approval_id?: number | null, memo?: string | null) {
     return this.call(
       "nft_transfer_call",
       { receiver_id, token_id, msg, approval_id: approval_id ?? null, memo: memo ?? null },
